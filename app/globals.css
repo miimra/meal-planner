@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+/* ── Palette: "Sage & Clay" — calm green primary, warm clay accent ─────────── */
+:root {
+  --bg: #e7e3d3;
+  --bg-elevated: #fdfcf7;
+  --ink: #1c2113;
+  --ink-soft: #5f6350;
+  --ink-faint: #8a8d72;
+  --line: #ded9c5;
+
+  /* Primary = sage green (nav, buttons, cooked, links) */
+  --accent: #3f6a2e;
+  --accent-soft: #d7e6c2;
+  --accent-ink: #2f5222;
+
+  /* Secondary = clay/terracotta (eyebrows, week pill, effort badge) */
+  --clay: #be3f1f;
+  --clay-soft: #f8ddcb;
+  --clay-ink: #a5361a;
+
+  --good: #3f6a2e;
+  --hero-from: #fffef8;
+  --hero-to: #eef4e2;
+  --nav-bg: rgba(253, 252, 247, 0.92);
+  --shadow: 0 1px 2px rgba(40, 45, 20, 0.04), 0 10px 30px rgba(40, 45, 20, 0.08);
+  --shadow-sm: 0 1px 2px rgba(40, 45, 20, 0.05), 0 4px 14px rgba(40, 45, 20, 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16180f;
+    --bg-elevated: #21241a;
+    --ink: #eef0e2;
+    --ink-soft: #b8bca6;
+    --ink-faint: #82866f;
+    --line: #33372a;
+
+    --accent: #8fbf6f;
+    --accent-soft: #2f3a22;
+    --accent-ink: #a9d488;
+
+    --clay: #e58a63;
+    --clay-soft: #3a2a20;
+    --clay-ink: #f0a884;
+
+    --good: #8fbf6f;
+    --hero-from: #262a1e;
+    --hero-to: #222a1a;
+    --nav-bg: rgba(33, 36, 26, 0.92);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 10px 30px rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2), 0 4px 14px rgba(0, 0, 0, 0.22);
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-clay: var(--clay);
+  --color-clay-soft: var(--clay-soft);
+  --color-clay-ink: var(--clay-ink);
+  --color-good: var(--good);
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-vazirmatn), system-ui, -apple-system, sans-serif;
+  overscroll-behavior-y: none;
+}
+
+/* Persian text renders naturally RTL wherever it appears inline. */
+.fa {
+  direction: rtl;
+  unicode-bidi: plaintext;
+}
+
+/* Respect the iOS safe area for the bottom nav. */
+.pb-safe {
+  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+}

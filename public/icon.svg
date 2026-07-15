@@ -1,0 +1,18 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="112" fill="#e7e3d3"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#3f6a2e" stroke-width="18"/>
+  <circle cx="256" cy="256" r="96" fill="#f8ddcb"/>
+  <!-- fork -->
+  <g fill="#3f6a2e">
+    <rect x="120" y="150" width="16" height="90" rx="6"/>
+    <rect x="146" y="150" width="16" height="90" rx="6"/>
+    <rect x="172" y="150" width="16" height="90" rx="6"/>
+    <rect x="146" y="228" width="16" height="150" rx="8"/>
+    <path d="M120 150 q34 40 68 0 v20 q-34 40 -68 0 z"/>
+  </g>
+  <!-- knife -->
+  <g fill="#be3f1f">
+    <path d="M368 150 q28 0 28 60 q0 50 -20 70 l-8 0 z"/>
+    <rect x="360" y="270" width="16" height="108" rx="8"/>
+  </g>
+</svg>
