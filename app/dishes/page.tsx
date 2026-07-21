@@ -23,7 +23,7 @@ export default function DishesPage() {
     <main className="flex flex-col gap-5">
       <header className="flex items-end justify-between">
         <div>
-          <h1 className="text-xl font-bold">Your dishes</h1>
+          <h1 className="font-display text-2xl font-bold">🧺 Your dishes</h1>
           <p className="text-sm text-ink-faint">Tap a category to edit its dishes</p>
         </div>
         <button
@@ -45,24 +45,26 @@ export default function DishesPage() {
           return (
             <section
               key={cat.id}
-              className="overflow-hidden rounded-2xl bg-bg-elevated"
-              style={{ boxShadow: "var(--shadow)" }}
+              className="overflow-hidden rounded-[24px] bg-bg-elevated"
+              style={{ boxShadow: "var(--shadow)", border: "1px solid var(--line)" }}
             >
               <button
                 onClick={() => setOpen(isOpen ? null : cat.id)}
                 className="flex w-full items-center gap-3 p-4 text-left"
               >
-                <span className="text-2xl">{cat.emoji}</span>
+                <span className={`text-2xl ${isOpen ? "animate-bob" : ""}`}>
+                  {cat.emoji}
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <p className="truncate font-semibold">{cat.name_en}</p>
+                    <p className="font-display truncate font-bold">{cat.name_en}</p>
                     {cat.weekend_only && (
                       <span className="flex-none text-xs text-ink-faint">weekend</span>
                     )}
                   </div>
                   <p className="fa truncate text-sm text-ink-soft">{cat.name_fa}</p>
                 </div>
-                <span className="flex-none text-sm text-ink-faint">
+                <span className="flex-none rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-bold text-accent-ink">
                   {dishes.length}
                 </span>
                 <span

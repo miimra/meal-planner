@@ -1,55 +1,71 @@
 @import "tailwindcss";
 
-/* ── Palette: "Sage & Clay" — calm green primary, warm clay accent ─────────── */
+/* ── Palette: "Enchanted Kitchen" — a storybook candy world of food magic ───── */
 :root {
-  --bg: #e7e3d3;
-  --bg-elevated: #fdfcf7;
-  --ink: #1c2113;
-  --ink-soft: #5f6350;
-  --ink-faint: #8a8d72;
-  --line: #ded9c5;
+  --bg: #fdf1f7;
+  --bg-elevated: #fffdfe;
+  --ink: #3f2b4d;
+  --ink-soft: #7a6688;
+  --ink-faint: #b09cbf;
+  --line: #f3e2ee;
 
-  /* Primary = sage green (nav, buttons, cooked, links) */
-  --accent: #3f6a2e;
-  --accent-soft: #d7e6c2;
-  --accent-ink: #2f5222;
+  /* Primary = berry magic (nav, buttons, links) */
+  --accent: #cf4fa6;
+  --accent-soft: #fbdcf0;
+  --accent-ink: #a12a7d;
 
-  /* Secondary = clay/terracotta (eyebrows, week pill, effort badge) */
-  --clay: #be3f1f;
-  --clay-soft: #f8ddcb;
-  --clay-ink: #a5361a;
+  /* Secondary = sunny peach (eyebrows, week pill, effort badge) */
+  --clay: #f0913f;
+  --clay-soft: #ffe6cf;
+  --clay-ink: #c66516;
 
-  --good: #3f6a2e;
-  --hero-from: #fffef8;
-  --hero-to: #eef4e2;
-  --nav-bg: rgba(253, 252, 247, 0.92);
-  --shadow: 0 1px 2px rgba(40, 45, 20, 0.04), 0 10px 30px rgba(40, 45, 20, 0.08);
-  --shadow-sm: 0 1px 2px rgba(40, 45, 20, 0.05), 0 4px 14px rgba(40, 45, 20, 0.05);
+  /* Good = minty enchantment (cooked confirmation) */
+  --good: #23a889;
+  --good-soft: #cdf2e6;
+
+  --hero-from: #fff3fb;
+  --hero-via: #ffe9f5;
+  --hero-to: #ede4ff;
+  --nav-bg: rgba(255, 253, 254, 0.86);
+  --shadow: 0 2px 6px rgba(150, 60, 120, 0.08), 0 14px 34px rgba(150, 60, 130, 0.14);
+  --shadow-sm: 0 1px 3px rgba(150, 60, 120, 0.07), 0 6px 16px rgba(150, 60, 130, 0.09);
+
+  /* Dreamy floating orbs painted behind everything */
+  --orb-a: rgba(255, 194, 232, 0.55);
+  --orb-b: rgba(203, 214, 255, 0.5);
+  --orb-c: rgba(255, 224, 186, 0.45);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #16180f;
-    --bg-elevated: #21241a;
-    --ink: #eef0e2;
-    --ink-soft: #b8bca6;
-    --ink-faint: #82866f;
-    --line: #33372a;
+    --bg: #1c132a;
+    --bg-elevated: #2a1f3d;
+    --ink: #f6ecfb;
+    --ink-soft: #cdb9e0;
+    --ink-faint: #9683ad;
+    --line: #3d2f54;
 
-    --accent: #8fbf6f;
-    --accent-soft: #2f3a22;
-    --accent-ink: #a9d488;
+    --accent: #f584c6;
+    --accent-soft: #431f3a;
+    --accent-ink: #fbb2df;
 
-    --clay: #e58a63;
-    --clay-soft: #3a2a20;
-    --clay-ink: #f0a884;
+    --clay: #f7ac6c;
+    --clay-soft: #43301f;
+    --clay-ink: #f9c793;
 
-    --good: #8fbf6f;
-    --hero-from: #262a1e;
-    --hero-to: #222a1a;
-    --nav-bg: rgba(33, 36, 26, 0.92);
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 10px 30px rgba(0, 0, 0, 0.3);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2), 0 4px 14px rgba(0, 0, 0, 0.22);
+    --good: #57d6b1;
+    --good-soft: #1e3d36;
+
+    --hero-from: #2e2144;
+    --hero-via: #34213f;
+    --hero-to: #241a3a;
+    --nav-bg: rgba(42, 31, 61, 0.86);
+    --shadow: 0 2px 6px rgba(0, 0, 0, 0.3), 0 14px 34px rgba(0, 0, 0, 0.4);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.25), 0 6px 16px rgba(0, 0, 0, 0.3);
+
+    --orb-a: rgba(180, 70, 150, 0.28);
+    --orb-b: rgba(90, 90, 200, 0.26);
+    --orb-c: rgba(200, 130, 70, 0.2);
   }
 }
 
@@ -67,6 +83,8 @@
   --color-clay-soft: var(--clay-soft);
   --color-clay-ink: var(--clay-ink);
   --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --font-display: var(--font-display);
 }
 
 html {
@@ -74,19 +92,72 @@ html {
 }
 
 body {
-  background: var(--bg);
+  position: relative;
+  min-height: 100dvh;
   color: var(--ink);
   font-family: var(--font-vazirmatn), system-ui, -apple-system, sans-serif;
   overscroll-behavior-y: none;
+  /* A soft dreamy gradient wash — the enchanted kitchen sky. */
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(42rem 42rem at 12% -8%, var(--orb-a), transparent 60%),
+    radial-gradient(38rem 38rem at 108% 8%, var(--orb-b), transparent 60%),
+    radial-gradient(34rem 34rem at 50% 118%, var(--orb-c), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* Playful rounded display font for English headings. */
+.font-display {
+  font-family: var(--font-display), var(--font-vazirmatn), system-ui, sans-serif;
+  letter-spacing: -0.01em;
 }
 
 /* Persian text renders naturally RTL wherever it appears inline. */
 .fa {
   direction: rtl;
   unicode-bidi: plaintext;
+  font-family: var(--font-vazirmatn), system-ui, sans-serif;
 }
 
 /* Respect the iOS safe area for the bottom nav. */
 .pb-safe {
   padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+}
+
+/* ── Micro-magic: gentle, calm motion (never frantic) ───────────────────────── */
+
+/* A slow, sleepy bob for the big category emoji. */
+@keyframes float-bob {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-5px) rotate(2deg); }
+}
+.animate-bob {
+  animation: float-bob 4.5s ease-in-out infinite;
+}
+
+/* Twinkling sparkle. */
+@keyframes twinkle {
+  0%, 100% { opacity: 0.35; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+.animate-twinkle {
+  animation: twinkle 2.8s ease-in-out infinite;
+}
+
+/* A happy little pop when a dish is marked cooked. */
+@keyframes pop-in {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-pop {
+  animation: pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-bob,
+  .animate-twinkle,
+  .animate-pop {
+    animation: none;
+  }
 }

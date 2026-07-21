@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "A calm, pre-decided dinner plan on a 2-week rotation.",
     start_url: "/",
     display: "standalone",
-    background_color: "#e7e3d3",
-    theme_color: "#3f6a2e",
+    background_color: "#fdf1f7",
+    theme_color: "#cf4fa6",
     orientation: "portrait",
     icons: [
       {

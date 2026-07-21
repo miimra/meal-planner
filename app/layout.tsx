@@ -1,12 +1,19 @@
 import type { Metadata, Viewport } from "next";
-import { Vazirmatn } from "next/font/google";
+import { Vazirmatn, Baloo_2 } from "next/font/google";
 import "./globals.css";
 import BottomNav from "./components/BottomNav";
 
-// Vazirmatn covers both Latin and Persian, so one font serves the whole UI.
+// Vazirmatn covers both Latin and Persian, so it serves body text + all Persian.
 const vazirmatn = Vazirmatn({
   subsets: ["latin", "arabic"],
   variable: "--font-vazirmatn",
+  display: "swap",
+});
+
+// Baloo 2 is a round, friendly, storybook display face for English headings.
+const baloo = Baloo_2({
+  subsets: ["latin"],
+  variable: "--font-display",
   display: "swap",
 });
 
@@ -22,7 +29,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#3f6a2e",
+  themeColor: "#cf4fa6",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -33,7 +40,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${vazirmatn.variable} antialiased`}>
+      <body className={`${vazirmatn.variable} ${baloo.variable} antialiased`}>
         <div className="mx-auto min-h-dvh max-w-lg px-4 pb-24 pt-6">{children}</div>
         <BottomNav />
       </body>
