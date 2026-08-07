@@ -1,4 +1,5 @@
-import { Category, getCategory } from "./categories";
+import type { Category } from "./categories.ts";
+import { findCategory } from "./categories.ts";
 
 // ── Day model ────────────────────────────────────────────────────────────────
 // We work in Monday-first order to match the rotation tables in the README.
@@ -50,7 +51,8 @@ export function rotationWeekOf(date: Date): RotationWeek {
 
 // ── The plan ─────────────────────────────────────────────────────────────────
 // Category id for each weekday, per rotation week. `null` = special handling
-// (weekend). See README "The 2-Week Rotation".
+// (weekend). See README "The 2-Week Rotation". This table only knows catIds —
+// it has no dependency on where/how category content is loaded.
 
 const WEEK_1: (number | null)[] = [5, 1, 6, 4, 7, null, null];
 const WEEK_2: (number | null)[] = [12, 11, 10, 9, 8, null, null];
@@ -62,10 +64,10 @@ export interface PlanDay {
   dayName: string;
   week: RotationWeek;
   kind: DayKind;
-  /** Resolved category for weekdays. Undefined for weekends. */
-  category?: Category;
-  /** Sunday offers a choice between these two categories. */
-  choices?: Category[];
+  /** Resolved category id for weekdays. Undefined for weekends. */
+  categoryId?: number;
+  /** Sunday offers a choice between these two category ids. */
+  choiceIds?: number[];
 }
 
 /** Resolve the plan for a specific weekday index within a rotation week. */
@@ -76,19 +78,12 @@ export function planForDay(week: RotationWeek, day: DayIndex): PlanDay {
     return { day, dayName, week, kind: "eat-out" };
   }
   if (day === 6) {
-    const choices = [getCategory(2)!, getCategory(3)!];
-    return { day, dayName, week, kind: "sunday-choice", choices };
+    return { day, dayName, week, kind: "sunday-choice", choiceIds: [2, 3] };
   }
 
   const table = week === 1 ? WEEK_1 : WEEK_2;
   const catId = table[day]!;
-  return {
-    day,
-    dayName,
-    week,
-    kind: "weekday",
-    category: getCategory(catId),
-  };
+  return { day, dayName, week, kind: "weekday", categoryId: catId };
 }
 
 /** The plan for an actual calendar date. */
@@ -108,8 +103,31 @@ export function addDays(date: Date, n: number): Date {
   return d;
 }
 
-/** Human label for effort + minute range, e.g. "⚡ Quick · 20–30 min". */
+/** Human label for effort + minute range, e.g. "20–30 min". */
 export function effortRange(category: Category): string {
   const [a, b] = category.effort_minutes;
   return `${a}–${b} min`;
+}
+
+// ── Display labels ───────────────────────────────────────────────────────────
+
+export interface PlanLabel {
+  emoji: string;
+  title: string;
+  fa?: string;
+}
+
+/** Resolve a PlanDay into what to show, given the currently-loaded categories. */
+export function planLabel(plan: PlanDay, categories: Category[]): PlanLabel {
+  if (plan.kind === "eat-out") return { emoji: "🍴", title: "Eating out" };
+  if (plan.kind === "sunday-choice") {
+    return { emoji: "🍢", title: "Your pick", fa: "کبابی یا خورشت" };
+  }
+  const category =
+    plan.categoryId !== undefined ? findCategory(categories, plan.categoryId) : undefined;
+  return {
+    emoji: category?.emoji ?? "❓",
+    title: category?.name_en ?? "Unknown",
+    fa: category?.name_fa,
+  };
 }
