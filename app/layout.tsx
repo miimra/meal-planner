@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Vazirmatn } from "next/font/google";
 import "./globals.css";
 import BottomNav from "./components/BottomNav";
+import LoginControl from "./components/LoginControl";
 
 // Vazirmatn covers both Latin and Persian, so one font serves the whole UI.
 const vazirmatn = Vazirmatn({
@@ -35,6 +36,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${vazirmatn.variable} antialiased`}>
         <div className="mx-auto min-h-dvh max-w-lg px-4 pb-24 pt-6">{children}</div>
+        <LoginControl />
         <BottomNav />
       </body>
     </html>
