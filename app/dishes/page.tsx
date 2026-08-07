@@ -258,7 +258,7 @@ function CategoryFieldsEditor({
             effort_minutes: [Number(effortMin) || 0, Number(effortMax) || 0],
             weekend_only: weekendOnly,
             prep_ahead: prepAhead,
-            notes: notes.trim() || undefined,
+            notes: notes.trim(),
           });
           onSave();
         } catch {

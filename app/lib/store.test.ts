@@ -58,6 +58,12 @@ test("categoryPatchToBody sends notes: '' (not omitted) when clearing notes", ()
   assert.ok("notes" in body);
 });
 
+test("categoryPatchToBody sends notes: '' when notes is present but undefined (the shape a caller could still produce)", () => {
+  const body = categoryPatchToBody({ notes: undefined });
+  assert.equal(body.notes, "");
+  assert.ok("notes" in body);
+});
+
 test("categoryPatchToBody omits notes entirely when the patch doesn't touch it", () => {
   const body = categoryPatchToBody({ name_en: "Renamed" });
   assert.equal("notes" in body, false);

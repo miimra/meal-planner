@@ -192,6 +192,11 @@ export function useDishes() {
   );
 
   const update = useCallback(
+    // notes is a required string, not optional — PocketBase's SDK drops
+    // `undefined` keys from the request body, so an optional notes field
+    // would silently fail to clear it (see categoryPatchToBody above, and
+    // the bug it fixed). Omit the whole `notes` property to leave it
+    // untouched; pass "" to clear it.
     async (id: string, patch: { name?: string; notes?: string }) => {
       await pb.collection("dishes").update(id, patch);
       await refresh();
