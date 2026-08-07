@@ -3,8 +3,9 @@
 A calm, personal dinner planner built around a pre-decided **2-week rotation**, so you
 never have to ask _"what should I cook tonight?"_ again.
 
-Built as an installable **PWA** — Next.js 16 + Tailwind v4. Fully offline, no login,
-data stored locally in the browser. Bilingual (English + Persian), light & dark mode.
+Built as an installable **PWA** — Next.js 16 + Tailwind v4, backed by **PocketBase**.
+The plan is public and read-only for anyone; log in to edit dishes and categories.
+Bilingual (English + Persian), light & dark mode.
 
 > Made for one busy user: pick nothing daily, feel calm, and if a night gets skipped —
 > no streaks, no guilt, nothing breaks.
