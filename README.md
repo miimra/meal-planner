@@ -53,7 +53,8 @@ first run, create your one login account at `http://localhost:8090/_/`
 ### Install on your phone
 
 Open the site in mobile Safari/Chrome → **Share → Add to Home Screen**. It launches
-full-screen like a native app and works offline.
+full-screen like a native app. Categories and dishes load from PocketBase, so it
+needs a network connection; only the cooked-marks and Sunday choice work offline.
 
 ---
 
@@ -121,5 +122,5 @@ v4 · Vazirmatn font · PocketBase (server + JS SDK) for data and auth.
 ## Not built yet (post-MVP ideas)
 
 Shopping-list generation, prep reminders/notifications, dish-history sorting, guest mode,
-family preferences, a full FA/EN UI toggle. The local data layer is ready to build these
-on top of.
+family preferences, a full FA/EN UI toggle. The PocketBase data layer is ready to build
+these on top of.
