@@ -5,28 +5,19 @@ import {
   addDays,
   dateKey,
   mondayOf,
-  PlanDay,
+  planLabel,
   toDayIndex,
   weekPlan,
 } from "../lib/rotation";
-
-function cellLabel(plan: PlanDay): { emoji: string; title: string; fa?: string } {
-  if (plan.kind === "eat-out") return { emoji: "🍴", title: "Eating out" };
-  if (plan.kind === "sunday-choice")
-    return { emoji: "🍢", title: "Your pick", fa: "کبابی یا خورشت" };
-  return {
-    emoji: plan.category!.emoji,
-    title: plan.category!.name_en,
-    fa: plan.category!.name_fa,
-  };
-}
+import { useCategories } from "../lib/store";
 
 export default function WeekPage() {
   const [mounted, setMounted] = useState(false);
   const [today] = useState(() => new Date());
+  const { categories, loading: categoriesLoading } = useCategories();
   useEffect(() => setMounted(true), []);
 
-  if (!mounted) {
+  if (!mounted || categoriesLoading) {
     return <div className="h-96 animate-pulse rounded-3xl bg-bg-elevated" />;
   }
 
@@ -48,7 +39,7 @@ export default function WeekPage() {
         {days.map((plan) => {
           const date = addDays(monday, plan.day);
           const isToday = dateKey(date) === todayKey;
-          const label = cellLabel(plan);
+          const label = planLabel(plan, categories);
           const isWeekend = plan.day >= 5;
 
           return (
