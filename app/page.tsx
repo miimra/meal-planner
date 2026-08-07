@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Category } from "./lib/categories";
-import { addDays, dateKey, planForDate, PlanDay } from "./lib/rotation";
-import { Dish, useDishes } from "./lib/store";
+import { Category, findCategory } from "./lib/categories";
+import { addDays, dateKey, planForDate, planLabel, PlanDay } from "./lib/rotation";
+import { Dish, useCategories, useDishes } from "./lib/store";
 import { splitDishName } from "./lib/dishName";
 import { ClayPill, EffortBadge, EmojiTile } from "./components/badges";
 
@@ -29,7 +29,8 @@ function writeSundayChoice(key: string, categoryId: number | null) {
 export default function TodayPage() {
   const [mounted, setMounted] = useState(false);
   const [today] = useState(() => new Date());
-  const { forCategory, markCooked } = useDishes();
+  const { categories, loading: categoriesLoading, error: categoriesError } = useCategories();
+  const { forCategory, markCooked, error: dishesError } = useDishes();
 
   const todayKey = dateKey(today);
   const plan = useMemo(() => planForDate(today), [today]);
@@ -41,8 +42,12 @@ export default function TodayPage() {
     setSunday(readSundayChoice(todayKey));
   }, [todayKey]);
 
-  if (!mounted) {
+  if (!mounted || categoriesLoading) {
     return <div className="h-64 animate-pulse rounded-3xl bg-bg-elevated" />;
+  }
+
+  if (categoriesError || dishesError) {
+    return <p className="text-sm text-ink-faint">Couldn't load — check your connection.</p>;
   }
 
   // Design shows "Monday · 13 July".
@@ -50,10 +55,15 @@ export default function TodayPage() {
   const dayMonth = today.toLocaleDateString("en-GB", { day: "numeric", month: "long" });
   const dateDot = `${weekday} · ${dayMonth}`;
 
+  const choices = plan.choiceIds?.map((id) => findCategory(categories, id)).filter(
+    (c): c is Category => c !== undefined
+  );
   const chosen =
     plan.kind === "sunday-choice" && sunday !== null
-      ? plan.choices!.find((c) => c.id === sunday)
-      : plan.category;
+      ? choices?.find((c) => c.catId === sunday)
+      : plan.categoryId !== undefined
+        ? findCategory(categories, plan.categoryId)
+        : undefined;
 
   return (
     <main className="flex flex-col gap-6">
@@ -69,7 +79,7 @@ export default function TodayPage() {
 
       {plan.kind === "sunday-choice" && sunday === null && (
         <SundayChooser
-          choices={plan.choices!}
+          choices={choices!}
           onPick={(id) => {
             writeSundayChoice(todayKey, id);
             setSunday(id);
@@ -91,14 +101,14 @@ export default function TodayPage() {
             }
           />
           <DishList
-            dishes={forCategory(chosen.id)}
+            dishes={forCategory(chosen.catId)}
             todayKey={todayKey}
             onToggle={markCooked}
           />
         </>
       )}
 
-      <TomorrowPreview plan={tomorrowPlan} />
+      <TomorrowPreview plan={tomorrowPlan} categories={categories} />
     </main>
   );
 }
@@ -325,8 +335,8 @@ function SundayChooser({
       <div className="grid grid-cols-2 gap-3">
         {choices.map((c) => (
           <button
-            key={c.id}
-            onClick={() => onPick(c.id)}
+            key={c.catId}
+            onClick={() => onPick(c.catId)}
             className="flex flex-col items-center gap-1 rounded-[26px] bg-bg-elevated p-5 text-center transition-all active:scale-[0.97]"
             style={{ boxShadow: "var(--shadow-sm)", border: "2px solid var(--line)" }}
           >
@@ -340,13 +350,8 @@ function SundayChooser({
   );
 }
 
-function TomorrowPreview({ plan }: { plan: PlanDay }) {
-  const label =
-    plan.kind === "eat-out"
-      ? "🍴 Eating out"
-      : plan.kind === "sunday-choice"
-        ? "🍢 Your pick"
-        : `${plan.category!.emoji} ${plan.category!.name_en}`;
+function TomorrowPreview({ plan, categories }: { plan: PlanDay; categories: Category[] }) {
+  const { emoji, title } = planLabel(plan, categories);
 
   return (
     <Link
@@ -355,7 +360,9 @@ function TomorrowPreview({ plan }: { plan: PlanDay }) {
       style={{ boxShadow: "var(--shadow-sm)" }}
     >
       <span className="text-ink-faint">🌷 Tomorrow · {plan.dayName}</span>
-      <span className="font-display font-bold text-ink">{label}</span>
+      <span className="font-display font-bold text-ink">
+        {emoji} {title}
+      </span>
     </Link>
   );
 }

@@ -5,31 +5,24 @@ import {
   DAY_NAMES,
   DayIndex,
   planForDay,
-  PlanDay,
+  planLabel,
   RotationWeek,
   rotationWeekOf,
   toDayIndex,
 } from "../lib/rotation";
-
-function rowLabel(plan: PlanDay): { emoji: string; en: string; fa?: string } {
-  if (plan.kind === "eat-out") return { emoji: "🍴", en: "Eating out" };
-  if (plan.kind === "sunday-choice")
-    return { emoji: "🍢", en: "Kabab or stew (your pick)", fa: "کبابی یا خورشت" };
-  return {
-    emoji: plan.category!.emoji,
-    en: plan.category!.name_en,
-    fa: plan.category!.name_fa,
-  };
-}
+import { Category } from "../lib/categories";
+import { useCategories } from "../lib/store";
 
 function WeekBlock({
   week,
   currentDay,
   isCurrentWeek,
+  categories,
 }: {
   week: RotationWeek;
   currentDay: DayIndex | null;
   isCurrentWeek: boolean;
+  categories: Category[];
 }) {
   return (
     <section
@@ -50,7 +43,7 @@ function WeekBlock({
       <ul className="flex flex-col">
         {DAY_NAMES.map((name, i) => {
           const plan = planForDay(week, i as DayIndex);
-          const label = rowLabel(plan);
+          const label = planLabel(plan, categories);
           const isToday = isCurrentWeek && currentDay === i;
           return (
             <li
@@ -63,7 +56,7 @@ function WeekBlock({
               </span>
               <span className="text-2xl">{label.emoji}</span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{label.en}</p>
+                <p className="truncate text-sm font-semibold">{label.title}</p>
                 {label.fa && (
                   <p className="fa truncate text-xs text-ink-soft">{label.fa}</p>
                 )}
@@ -80,10 +73,15 @@ function WeekBlock({
 export default function RotationPage() {
   const [mounted, setMounted] = useState(false);
   const [today] = useState(() => new Date());
+  const { categories, loading: categoriesLoading, error: categoriesError } = useCategories();
   useEffect(() => setMounted(true), []);
 
-  if (!mounted) {
+  if (!mounted || categoriesLoading) {
     return <div className="h-96 animate-pulse rounded-3xl bg-bg-elevated" />;
+  }
+
+  if (categoriesError) {
+    return <p className="text-sm text-ink-faint">Couldn't load — check your connection.</p>;
   }
 
   const currentWeek = rotationWeekOf(today);
@@ -102,11 +100,13 @@ export default function RotationPage() {
         week={1}
         currentDay={currentWeek === 1 ? currentDay : null}
         isCurrentWeek={currentWeek === 1}
+        categories={categories}
       />
       <WeekBlock
         week={2}
         currentDay={currentWeek === 2 ? currentDay : null}
         isCurrentWeek={currentWeek === 2}
+        categories={categories}
       />
 
       <section

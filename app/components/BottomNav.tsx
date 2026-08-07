@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import LoginControl from "./LoginControl";
 
 function TodayIcon() {
   return (
@@ -75,6 +76,9 @@ export default function BottomNav() {
             </li>
           );
         })}
+        <li className="flex flex-none items-center justify-center pl-1">
+          <LoginControl />
+        </li>
       </ul>
     </nav>
   );

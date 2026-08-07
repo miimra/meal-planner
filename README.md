@@ -3,8 +3,9 @@
 A calm, personal dinner planner built around a pre-decided **2-week rotation**, so you
 never have to ask _"what should I cook tonight?"_ again.
 
-Built as an installable **PWA** — Next.js 16 + Tailwind v4. Fully offline, no login,
-data stored locally in the browser. Bilingual (English + Persian), light & dark mode.
+Built as an installable **PWA** — Next.js 16 + Tailwind v4, backed by **PocketBase**.
+The plan is public and read-only for anyone; log in to edit dishes and categories.
+Bilingual (English + Persian), light & dark mode.
 
 > Made for one busy user: pick nothing daily, feel calm, and if a night gets skipped —
 > no streaks, no guilt, nothing breaks.
@@ -20,22 +21,40 @@ data stored locally in the browser. Bilingual (English + Persian), light & dark 
 - **Week** — the current Mon–Sun at a glance, today highlighted, weekends softened.
 - **Rotation** — the full 2-week grid plus the rules, with the current week/day marked.
 - **Dishes** — add / edit / delete your own dishes inside each of the 12 categories, with
-  optional notes. "Reset" restores the original list.
+  optional notes.
 
 ---
 
 ## Run it
 
+Needs a running PocketBase for data — see below.
+
 ```bash
 npm install
-npm run dev      # http://localhost:3000
-npm run build && npm start   # production
+
+# Local dev: point the frontend at a separately-running PocketBase
+curl -Lo /tmp/pb.zip https://github.com/pocketbase/pocketbase/releases/download/v0.39.10/pocketbase_0.39.10_linux_amd64.zip
+unzip -o /tmp/pb.zip pocketbase -d /tmp/pb
+/tmp/pb/pocketbase serve --http=127.0.0.1:8090 &
+NEXT_PUBLIC_PB_URL=http://127.0.0.1:8090 npm run dev      # http://localhost:3000
 ```
+
+### Production (single container)
+
+```bash
+docker build -t meal-planner .
+docker run -p 8090:8090 -v meal-planner-pb-data:/pb/pb_data meal-planner
+```
+
+PocketBase serves both the app and its API from `http://localhost:8090`. On
+first run, create your one login account at `http://localhost:8090/_/`
+(PocketBase's Admin UI) — there's no in-app signup.
 
 ### Install on your phone
 
 Open the site in mobile Safari/Chrome → **Share → Add to Home Screen**. It launches
-full-screen like a native app and works offline.
+full-screen like a native app. Categories and dishes load from PocketBase, so it
+needs a network connection; only the cooked-marks and Sunday choice work offline.
 
 ---
 
@@ -68,9 +87,12 @@ the original brief.
 
 ## Data & storage
 
-- `app/lib/categories.ts` — the 12 fixed categories + their default dishes.
-- Dishes, cooked-marks, and Sunday choices live in **`localStorage`** (`mp_dishes_v1`,
-  `mp_sunday_v1`), seeded from the defaults on first run. No backend, single user.
+- Categories and dishes live in **PocketBase** (`pb_migrations/` seeds the 12
+  categories + their default dishes on first boot). Publicly readable;
+  editing (dishes, category fields) requires being logged in — see the 🔒/🔓
+  control in the bottom nav. No roles, one account.
+- Cooked-marks and the Sunday choice stay in **`localStorage`**
+  (`mp_last_cooked_v1`, `mp_sunday_v1`) — per-device, not shared, not synced.
 
 ---
 
@@ -81,23 +103,24 @@ app/
   page.tsx          Today
   week/             Week view
   rotation/         2-week grid
-  dishes/           Dish manager
-  lib/              categories · rotation · store · dishName
-  components/       BottomNav · badges
+  dishes/           Dish manager (login-gated editing)
+  lib/              categories · rotation · store (PocketBase) · auth · pb · dishName
+  components/       BottomNav · LoginControl · badges
   manifest.ts       PWA manifest
   globals.css       design tokens (light + dark)
 public/             app icons (svg + maskable)
+pb_migrations/      PocketBase schema + seed data
 ```
 
 ---
 
 ## Tech
 
-Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS v4 ·
-Vazirmatn font. No runtime dependencies beyond the framework.
+Next.js 16 (App Router, static export) · React 19 · TypeScript · Tailwind CSS
+v4 · Vazirmatn font · PocketBase (server + JS SDK) for data and auth.
 
 ## Not built yet (post-MVP ideas)
 
 Shopping-list generation, prep reminders/notifications, dish-history sorting, guest mode,
-family preferences, a full FA/EN UI toggle. The local data layer is ready to build these
-on top of.
+family preferences, a full FA/EN UI toggle. The PocketBase data layer is ready to build
+these on top of.

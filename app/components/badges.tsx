@@ -1,4 +1,4 @@
-import { Category, EFFORT_LABEL, STYLE_LABEL } from "@/app/lib/categories";
+import { Category, EFFORT_LABEL } from "@/app/lib/categories";
 import { effortRange } from "@/app/lib/rotation";
 
 const EFFORT_ICON: Record<Category["effort"], string> = {
@@ -25,14 +25,6 @@ export function ClayPill({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center rounded-full bg-clay-soft px-3.5 py-1.5 text-sm font-extrabold text-clay-ink">
       {children}
-    </span>
-  );
-}
-
-export function StyleBadge({ category }: { category: Category }) {
-  return (
-    <span className="inline-flex items-center rounded-full border border-line px-2.5 py-0.5 text-xs text-ink-soft">
-      {STYLE_LABEL[category.style]}
     </span>
   );
 }
