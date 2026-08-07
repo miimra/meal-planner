@@ -59,8 +59,8 @@ export default function TodayPage() {
     <main className="flex flex-col gap-6">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">{dateDot}</h1>
-          <p className="mt-0.5 text-sm text-ink-faint">Dinner plan</p>
+          <h1 className="font-display text-2xl font-bold tracking-tight">{dateDot}</h1>
+          <p className="mt-0.5 text-sm text-ink-faint">✨ Tonight&apos;s little plan</p>
         </div>
         <ClayPill>Week {plan.week}</ClayPill>
       </header>
@@ -114,19 +114,31 @@ function HeroCard({
 }) {
   return (
     <section
-      className="rounded-[28px] p-5"
+      className="relative overflow-hidden rounded-[32px] p-5"
       style={{
-        background: "linear-gradient(150deg, var(--hero-from), var(--hero-to))",
+        background:
+          "linear-gradient(150deg, var(--hero-from), var(--hero-via) 55%, var(--hero-to))",
         boxShadow: "var(--shadow)",
+        border: "1px solid var(--line)",
       }}
     >
+      <span className="animate-twinkle pointer-events-none absolute right-5 top-4 text-lg">
+        ✨
+      </span>
+      <span
+        className="animate-twinkle pointer-events-none absolute right-12 top-10 text-xs"
+        style={{ animationDelay: "0.9s" }}
+      >
+        ⭐
+      </span>
+
       <div className="flex items-start gap-4">
         <EmojiTile emoji={category.emoji} />
         <div className="min-w-0 flex-1 pt-0.5">
-          <p className="text-xs font-bold uppercase tracking-widest text-clay">
-            Tonight
+          <p className="text-xs font-extrabold uppercase tracking-widest text-accent">
+            ✨ Tonight
           </p>
-          <h2 className="mt-1 text-2xl font-extrabold leading-tight tracking-tight">
+          <h2 className="font-display mt-1 text-[28px] font-bold leading-tight tracking-tight">
             {category.name_en}
           </h2>
           <p className="fa mt-1 text-lg text-ink-soft">{category.name_fa}</p>
@@ -138,7 +150,7 @@ function HeroCard({
         {onChangeChoice && (
           <button
             onClick={onChangeChoice}
-            className="text-sm font-medium text-accent underline underline-offset-2"
+            className="text-sm font-semibold text-accent underline underline-offset-2"
           >
             Change choice
           </button>
@@ -146,7 +158,7 @@ function HeroCard({
       </div>
 
       {category.notes && (
-        <p className="mt-4 rounded-2xl bg-clay-soft px-4 py-3 text-sm text-clay-ink">
+        <p className="mt-4 rounded-2xl bg-clay-soft px-4 py-3 text-sm font-medium text-clay-ink">
           💡 {category.notes}
         </p>
       )}
@@ -196,8 +208,8 @@ function DishList({
         ))}
       </ul>
       {cookedToday && (
-        <p className="mt-4 text-center text-sm font-semibold text-good">
-          ✓ Cooked today — nice one 🌿
+        <p className="animate-pop mt-4 flex items-center justify-center gap-1.5 rounded-2xl bg-good-soft py-2.5 text-center text-sm font-bold text-good">
+          🌸 Cooked today — you did it! ✨
         </p>
       )}
     </section>
@@ -218,10 +230,11 @@ function DishCard({
     <li>
       <button
         onClick={onToggle}
-        className="flex w-full items-center gap-3 rounded-2xl bg-bg-elevated px-4 py-3.5 text-left transition-colors"
+        className="flex w-full items-center gap-3 rounded-[22px] px-4 py-3.5 text-left transition-all active:scale-[0.98]"
         style={{
+          background: cooked ? "var(--good-soft)" : "var(--bg-elevated)",
           boxShadow: "var(--shadow-sm)",
-          outline: cooked ? "2px solid var(--good)" : "none",
+          outline: cooked ? "2px solid var(--good)" : "2px solid transparent",
         }}
       >
         <div className="min-w-0 flex-1">
@@ -243,14 +256,16 @@ function DishCard({
           )}
         </div>
         <span
-          className="flex h-7 w-7 flex-none items-center justify-center rounded-full border-2 text-xs"
+          className={`flex h-8 w-8 flex-none items-center justify-center rounded-full border-2 text-sm ${
+            cooked ? "animate-pop" : ""
+          }`}
           style={{
             borderColor: cooked ? "var(--good)" : "var(--line)",
             background: cooked ? "var(--good)" : "transparent",
             color: "#fff",
           }}
         >
-          {cooked ? "✓" : ""}
+          {cooked ? "🌸" : ""}
         </span>
       </button>
     </li>
@@ -261,27 +276,36 @@ function DishCard({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="mb-3 px-1 text-sm font-semibold text-ink-soft">{children}</h3>
+    <h3 className="font-display mb-3 px-1 text-sm font-bold text-ink-soft">
+      {children}
+    </h3>
   );
 }
 
 function EatOutCard() {
   return (
     <section
-      className="rounded-[28px] p-6"
+      className="relative overflow-hidden rounded-[32px] p-6"
       style={{
-        background: "linear-gradient(150deg, var(--hero-from), var(--hero-to))",
+        background:
+          "linear-gradient(150deg, var(--hero-from), var(--hero-via) 55%, var(--hero-to))",
         boxShadow: "var(--shadow)",
+        border: "1px solid var(--line)",
       }}
     >
+      <span className="animate-twinkle pointer-events-none absolute right-6 top-5 text-lg">
+        ✨
+      </span>
       <div className="flex items-center gap-4">
         <EmojiTile emoji="🍴" />
         <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-clay">
-            Tonight
+          <p className="text-xs font-extrabold uppercase tracking-widest text-accent">
+            ✨ Tonight
           </p>
-          <h2 className="mt-1 text-2xl font-extrabold tracking-tight">Eating out</h2>
-          <p className="mt-1 text-ink-soft">No plan tonight. Relax and enjoy.</p>
+          <h2 className="font-display mt-1 text-2xl font-bold tracking-tight">
+            Eating out
+          </h2>
+          <p className="mt-1 text-ink-soft">No plan tonight. Relax and enjoy 💛</p>
         </div>
       </div>
     </section>
@@ -297,17 +321,17 @@ function SundayChooser({
 }) {
   return (
     <section>
-      <SectionLabel>Sunday — your pick</SectionLabel>
+      <SectionLabel>🌙 Sunday — your pick</SectionLabel>
       <div className="grid grid-cols-2 gap-3">
         {choices.map((c) => (
           <button
             key={c.id}
             onClick={() => onPick(c.id)}
-            className="flex flex-col items-center gap-1 rounded-3xl bg-bg-elevated p-5 text-center transition-colors"
-            style={{ boxShadow: "var(--shadow-sm)" }}
+            className="flex flex-col items-center gap-1 rounded-[26px] bg-bg-elevated p-5 text-center transition-all active:scale-[0.97]"
+            style={{ boxShadow: "var(--shadow-sm)", border: "2px solid var(--line)" }}
           >
-            <span className="text-5xl">{c.emoji}</span>
-            <span className="mt-2 font-bold">{c.name_en}</span>
+            <span className="animate-bob text-5xl">{c.emoji}</span>
+            <span className="font-display mt-2 font-bold">{c.name_en}</span>
             <span className="fa text-sm text-ink-soft">{c.name_fa}</span>
           </button>
         ))}
@@ -327,10 +351,11 @@ function TomorrowPreview({ plan }: { plan: PlanDay }) {
   return (
     <Link
       href="/week"
-      className="flex items-center justify-between rounded-2xl border border-line px-4 py-3 text-sm"
+      className="flex items-center justify-between rounded-[20px] border-2 border-line bg-bg-elevated/60 px-4 py-3 text-sm transition-colors active:scale-[0.99]"
+      style={{ boxShadow: "var(--shadow-sm)" }}
     >
-      <span className="text-ink-faint">Tomorrow · {plan.dayName}</span>
-      <span className="font-semibold">{label}</span>
+      <span className="text-ink-faint">🌷 Tomorrow · {plan.dayName}</span>
+      <span className="font-display font-bold text-ink">{label}</span>
     </Link>
   );
 }

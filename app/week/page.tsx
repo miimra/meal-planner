@@ -38,7 +38,7 @@ export default function WeekPage() {
   return (
     <main className="flex flex-col gap-5">
       <header>
-        <h1 className="text-xl font-bold">This week</h1>
+        <h1 className="font-display text-2xl font-bold">🗓️ This week</h1>
         <p className="text-sm text-ink-faint">
           Week {days[0].week} of the rotation
         </p>
@@ -54,38 +54,42 @@ export default function WeekPage() {
           return (
             <li
               key={plan.day}
-              className="flex items-center gap-4 rounded-2xl p-3.5"
+              className="flex items-center gap-4 rounded-[22px] p-3.5"
               style={{
-                background: "var(--bg-elevated)",
+                background: isToday
+                  ? "linear-gradient(150deg, var(--hero-from), var(--hero-via) 60%, var(--hero-to))"
+                  : "var(--bg-elevated)",
                 boxShadow: "var(--shadow)",
                 border: isToday ? "2px solid var(--accent)" : "2px solid transparent",
-                opacity: isWeekend ? 0.85 : 1,
+                opacity: isWeekend ? 0.9 : 1,
               }}
             >
               <div className="flex w-12 flex-none flex-col items-center">
-                <span className="text-xs font-medium text-ink-faint">
+                <span className="text-xs font-semibold text-ink-faint">
                   {plan.dayName.slice(0, 3)}
                 </span>
                 <span
-                  className="text-lg font-bold"
+                  className="font-display text-xl font-bold"
                   style={{ color: isToday ? "var(--accent)" : "var(--ink)" }}
                 >
                   {date.getDate()}
                 </span>
               </div>
 
-              <span className="text-3xl">{label.emoji}</span>
+              <span className={`text-3xl ${isToday ? "animate-bob" : ""}`}>
+                {label.emoji}
+              </span>
 
               <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold">{label.title}</p>
+                <p className="truncate font-bold">{label.title}</p>
                 {label.fa && (
                   <p className="fa truncate text-sm text-ink-soft">{label.fa}</p>
                 )}
               </div>
 
               {isToday && (
-                <span className="flex-none rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent-ink">
-                  Today
+                <span className="flex-none rounded-full bg-accent px-2.5 py-1 text-xs font-bold text-white">
+                  ✨ Today
                 </span>
               )}
             </li>
