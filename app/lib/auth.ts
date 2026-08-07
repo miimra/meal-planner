@@ -2,7 +2,10 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import { pb } from "./pb";
+// Uses an explicit .ts extension because this file (or its imports) may be
+// reached by node:test, which — unlike Next's bundler — doesn't resolve
+// extensionless specifiers.
+import { pb } from "./pb.ts";
 
 function subscribe(callback: () => void) {
   return pb.authStore.onChange(callback);
