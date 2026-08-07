@@ -21,7 +21,7 @@ Bilingual (English + Persian), light & dark mode.
 - **Week** — the current Mon–Sun at a glance, today highlighted, weekends softened.
 - **Rotation** — the full 2-week grid plus the rules, with the current week/day marked.
 - **Dishes** — add / edit / delete your own dishes inside each of the 12 categories, with
-  optional notes. "Reset" restores the original list.
+  optional notes.
 
 ---
 
@@ -90,7 +90,7 @@ the original brief.
 - Categories and dishes live in **PocketBase** (`pb_migrations/` seeds the 12
   categories + their default dishes on first boot). Publicly readable;
   editing (dishes, category fields) requires being logged in — see the 🔒/🔓
-  control top-right. No roles, one account.
+  control in the bottom nav. No roles, one account.
 - Cooked-marks and the Sunday choice stay in **`localStorage`**
   (`mp_last_cooked_v1`, `mp_sunday_v1`) — per-device, not shared, not synced.
 

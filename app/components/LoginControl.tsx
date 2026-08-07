@@ -19,7 +19,7 @@ export default function LoginControl() {
           if (confirm("Log out?")) logout();
         }}
         aria-label="Log out"
-        className="fixed right-3 top-3 z-30 flex h-9 w-9 items-center justify-center rounded-full text-lg"
+        className="flex h-9 w-9 items-center justify-center rounded-full text-lg"
         style={{ background: "var(--bg-elevated)", boxShadow: "var(--shadow-sm)" }}
       >
         🔓
@@ -28,7 +28,7 @@ export default function LoginControl() {
   }
 
   return (
-    <div className="fixed right-3 top-3 z-30">
+    <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label="Log in"
@@ -53,7 +53,7 @@ export default function LoginControl() {
               setSubmitting(false);
             }
           }}
-          className="absolute right-0 mt-2 flex w-56 flex-col gap-2 rounded-2xl p-3"
+          className="absolute right-0 bottom-full z-30 mb-2 flex w-56 flex-col gap-2 rounded-2xl p-3"
           style={{ background: "var(--bg-elevated)", boxShadow: "var(--shadow)" }}
         >
           <input
