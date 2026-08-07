@@ -1,144 +1,198 @@
+// app/lib/store.ts
 "use client";
 
-import { useCallback, useEffect, useSyncExternalStore } from "react";
-import { CATEGORIES } from "./categories";
+import { useCallback, useEffect, useState } from "react";
+import { pb } from "./pb.ts";
+import type { Category, Effort, Style } from "./categories.ts";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface Dish {
-  id: string;
-  categoryId: number;
+  id: string; // PocketBase record id
+  categoryId: number; // matches Category.catId
   name: string;
   notes?: string;
-  lastCooked?: string; // YYYY-MM-DD
+  lastCooked?: string; // YYYY-MM-DD, kept locally (see readLastCooked below)
 }
 
-const DISHES_KEY = "mp_dishes_v1";
-
-// ── Seeding ──────────────────────────────────────────────────────────────────
-
-function seedDishes(): Dish[] {
-  const out: Dish[] = [];
-  for (const cat of CATEGORIES) {
-    for (const name of cat.dishes) {
-      out.push({ id: newId(), categoryId: cat.id, name });
-    }
-  }
-  return out;
+interface CategoryRecord {
+  id: string;
+  catId: number;
+  name_en: string;
+  name_fa: string;
+  emoji: string;
+  style: Style;
+  effort: Effort;
+  effort_min: number;
+  effort_max: number;
+  weekend_only?: boolean;
+  prep_ahead?: boolean;
+  notes?: string;
 }
 
-export function newId(): string {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+interface DishRecord {
+  id: string;
+  catId: number;
+  name: string;
+  notes?: string;
 }
 
-// ── Persistence ──────────────────────────────────────────────────────────────
+// ── PocketBase record → app-shape mapping (pure — see store.test.ts) ─────────
 
-function read(): Dish[] {
-  if (typeof window === "undefined") return [];
+export function mapCategoryRecord(r: CategoryRecord): Category {
+  return {
+    pbId: r.id,
+    catId: r.catId,
+    name_en: r.name_en,
+    name_fa: r.name_fa,
+    emoji: r.emoji,
+    style: r.style,
+    effort: r.effort,
+    effort_minutes: [r.effort_min, r.effort_max],
+    weekend_only: r.weekend_only || undefined,
+    prep_ahead: r.prep_ahead || undefined,
+    notes: r.notes || undefined,
+  };
+}
+
+export function mapDishRecord(r: DishRecord, lastCookedMap: Record<string, string>): Dish {
+  return {
+    id: r.id,
+    categoryId: r.catId,
+    name: r.name,
+    notes: r.notes || undefined,
+    lastCooked: lastCookedMap[r.id],
+  };
+}
+
+// ── "Cooked today" — per-device only, never sent to PocketBase ───────────────
+// ponytail: plain localStorage map, no server sync. Add a PocketBase field if
+// tracking cook history across devices ever matters.
+
+const LAST_COOKED_KEY = "mp_last_cooked_v1";
+
+function readLastCooked(): Record<string, string> {
+  if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(DISHES_KEY);
-    if (!raw) {
-      const seeded = seedDishes();
-      window.localStorage.setItem(DISHES_KEY, JSON.stringify(seeded));
-      return seeded;
-    }
-    return JSON.parse(raw) as Dish[];
+    return JSON.parse(window.localStorage.getItem(LAST_COOKED_KEY) || "{}");
   } catch {
-    return [];
+    return {};
   }
 }
 
-function write(dishes: Dish[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(DISHES_KEY, JSON.stringify(dishes));
-  emit();
+function writeLastCooked(map: Record<string, string>) {
+  window.localStorage.setItem(LAST_COOKED_KEY, JSON.stringify(map));
 }
 
-// ── Minimal external store so all screens stay in sync ────────────────────────
+// ── Categories ───────────────────────────────────────────────────────────────
 
-const listeners = new Set<() => void>();
-function emit() {
-  for (const l of listeners) l();
-}
-function subscribe(cb: () => void) {
-  listeners.add(cb);
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === DISHES_KEY) cb();
-  };
-  window.addEventListener("storage", onStorage);
-  return () => {
-    listeners.delete(cb);
-    window.removeEventListener("storage", onStorage);
-  };
-}
+export function useCategories() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-// Cache so getSnapshot returns a stable reference between writes.
-let cache: Dish[] | null = null;
-let cacheRaw: string | null = null;
-
-function getSnapshot(): Dish[] {
-  if (typeof window === "undefined") return EMPTY;
-  const raw = window.localStorage.getItem(DISHES_KEY);
-  if (raw === null) {
-    const seeded = read(); // seeds + persists
-    cache = seeded;
-    cacheRaw = window.localStorage.getItem(DISHES_KEY);
-    return cache;
-  }
-  if (raw !== cacheRaw) {
-    cacheRaw = raw;
-    cache = JSON.parse(raw) as Dish[];
-  }
-  return cache!;
-}
-
-const EMPTY: Dish[] = [];
-function getServerSnapshot(): Dish[] {
-  return EMPTY;
-}
-
-// ── Public hook ──────────────────────────────────────────────────────────────
-
-export function useDishes() {
-  const dishes = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-
-  // Ensure seeding happens on first client mount even if nothing subscribed yet.
-  useEffect(() => {
-    read();
+  const refresh = useCallback(async () => {
+    try {
+      const records = await pb
+        .collection("categories")
+        .getFullList<CategoryRecord>({ sort: "catId" });
+      setCategories(records.map(mapCategoryRecord));
+      setError(null);
+    } catch {
+      setError("Couldn't load categories.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const all = useCallback(() => read(), []);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const update = useCallback(
+    async (pbId: string, patch: Partial<Omit<Category, "pbId" | "catId">>) => {
+      const { effort_minutes, ...rest } = patch;
+      const body: Record<string, unknown> = { ...rest };
+      if (effort_minutes) {
+        body.effort_min = effort_minutes[0];
+        body.effort_max = effort_minutes[1];
+      }
+      await pb.collection("categories").update(pbId, body);
+      await refresh();
+    },
+    [refresh]
+  );
+
+  return { categories, loading, error, update };
+}
+
+// ── Dishes ───────────────────────────────────────────────────────────────────
+
+export function useDishes() {
+  const [dishes, setDishes] = useState<Dish[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const records = await pb.collection("dishes").getFullList<DishRecord>({ sort: "name" });
+      const lastCookedMap = readLastCooked();
+      setDishes(records.map((r) => mapDishRecord(r, lastCookedMap)));
+      setError(null);
+    } catch {
+      setError("Couldn't load dishes.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   const forCategory = useCallback(
     (categoryId: number) => dishes.filter((d) => d.categoryId === categoryId),
     [dishes]
   );
 
-  const add = useCallback((categoryId: number, name: string, notes?: string) => {
-    const dishes = read();
-    dishes.push({ id: newId(), categoryId, name: name.trim(), notes: notes?.trim() || undefined });
-    write(dishes);
+  const add = useCallback(
+    async (categoryId: number, name: string, notes?: string) => {
+      await pb.collection("dishes").create({
+        catId: categoryId,
+        name: name.trim(),
+        notes: notes?.trim() || undefined,
+      });
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const update = useCallback(
+    async (id: string, patch: { name?: string; notes?: string }) => {
+      await pb.collection("dishes").update(id, patch);
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const remove = useCallback(
+    async (id: string) => {
+      await pb.collection("dishes").delete(id);
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const markCooked = useCallback((id: string, key: string) => {
+    const map = readLastCooked();
+    if (map[id] === key) {
+      delete map[id];
+    } else {
+      map[id] = key;
+    }
+    writeLastCooked(map);
+    setDishes((prev) => prev.map((d) => (d.id === id ? { ...d, lastCooked: map[id] } : d)));
   }, []);
 
-  const update = useCallback((id: string, patch: Partial<Omit<Dish, "id">>) => {
-    const dishes = read().map((d) => (d.id === id ? { ...d, ...patch } : d));
-    write(dishes);
-  }, []);
-
-  const remove = useCallback((id: string) => {
-    write(read().filter((d) => d.id !== id));
-  }, []);
-
-  const markCooked = useCallback((id: string, dateKey: string) => {
-    const dishes = read().map((d) =>
-      d.id === id ? { ...d, lastCooked: d.lastCooked === dateKey ? undefined : dateKey } : d
-    );
-    write(dishes);
-  }, []);
-
-  const resetToDefaults = useCallback(() => {
-    write(seedDishes());
-  }, []);
-
-  return { dishes, all, forCategory, add, update, remove, markCooked, resetToDefaults };
+  return { dishes, loading, error, forCategory, add, update, remove, markCooked };
 }
