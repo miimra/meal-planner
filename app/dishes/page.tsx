@@ -14,12 +14,21 @@ export default function DishesPage() {
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState<number | null>(null);
   const { isLoggedIn } = useAuth();
-  const { categories, loading: categoriesLoading, update: updateCategory } = useCategories();
+  const {
+    categories,
+    loading: categoriesLoading,
+    error: categoriesError,
+    update: updateCategory,
+  } = useCategories();
   const dishStore = useDishes();
   useEffect(() => setMounted(true), []);
 
   if (!mounted || categoriesLoading) {
     return <div className="h-96 animate-pulse rounded-3xl bg-bg-elevated" />;
+  }
+
+  if (categoriesError || dishStore.error) {
+    return <p className="text-sm text-ink-faint">Couldn't load — check your connection.</p>;
   }
 
   return (
@@ -136,7 +145,7 @@ function CategoryEditor({
               dish={dish}
               onSave={(name, notes) => {
                 dishStore
-                  .update(dish.id, { name, notes: notes || undefined })
+                  .update(dish.id, { name, notes })
                   .catch(() => alert("Couldn't save — try again."));
                 setEditingId(null);
               }}

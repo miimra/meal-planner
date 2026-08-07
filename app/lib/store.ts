@@ -86,6 +86,33 @@ function writeLastCooked(map: Record<string, string>) {
 
 // ── Categories ───────────────────────────────────────────────────────────────
 
+/**
+ * Converts a category patch into the wire-format body sent to PocketBase's
+ * update endpoint: splits `effort_minutes` into `effort_min`/`effort_max`,
+ * and — crucially — turns a present-but-empty `notes` into `""` rather than
+ * `undefined`. PocketBase's JS SDK JSON-serializes the body, and
+ * `JSON.stringify` drops keys whose value is `undefined`, so an `undefined`
+ * notes would silently leave the old value in place instead of clearing it.
+ * Exported (and pure) so it's directly testable — see store.test.ts.
+ */
+export function categoryPatchToBody(
+  patch: Partial<Omit<Category, "pbId" | "catId">>
+): Record<string, unknown> {
+  const { effort_minutes, notes, ...rest } = patch;
+  const body: Record<string, unknown> = { ...rest };
+  if (effort_minutes) {
+    body.effort_min = effort_minutes[0];
+    body.effort_max = effort_minutes[1];
+  }
+  if ("notes" in patch) {
+    body.notes = notes ?? "";
+  }
+  return body;
+}
+
+// Each call to this hook fetches independently — fine while each page calls
+// it once, but two instances on one page would double-fetch and can desync
+// after a mutation in one of them.
 export function useCategories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,13 +138,7 @@ export function useCategories() {
 
   const update = useCallback(
     async (pbId: string, patch: Partial<Omit<Category, "pbId" | "catId">>) => {
-      const { effort_minutes, ...rest } = patch;
-      const body: Record<string, unknown> = { ...rest };
-      if (effort_minutes) {
-        body.effort_min = effort_minutes[0];
-        body.effort_max = effort_minutes[1];
-      }
-      await pb.collection("categories").update(pbId, body);
+      await pb.collection("categories").update(pbId, categoryPatchToBody(patch));
       await refresh();
     },
     [refresh]
@@ -128,6 +149,9 @@ export function useCategories() {
 
 // ── Dishes ───────────────────────────────────────────────────────────────────
 
+// Each call to this hook fetches independently — fine while each page calls
+// it once, but two instances on one page would double-fetch and can desync
+// after a mutation in one of them.
 export function useDishes() {
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [loading, setLoading] = useState(true);
@@ -156,11 +180,11 @@ export function useDishes() {
   );
 
   const add = useCallback(
-    async (categoryId: number, name: string, notes?: string) => {
+    async (categoryId: number, name: string, notes: string = "") => {
       await pb.collection("dishes").create({
         catId: categoryId,
         name: name.trim(),
-        notes: notes?.trim() || undefined,
+        notes: notes.trim(),
       });
       await refresh();
     },

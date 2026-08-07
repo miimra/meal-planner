@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mapCategoryRecord, mapDishRecord } from "./store.ts";
+import { categoryPatchToBody, mapCategoryRecord, mapDishRecord } from "./store.ts";
 
 test("mapCategoryRecord converts a PocketBase record into a Category", () => {
   const category = mapCategoryRecord({
@@ -50,4 +50,22 @@ test("mapDishRecord attaches lastCooked from the local map by dish id", () => {
 test("mapDishRecord leaves lastCooked undefined when not in the local map", () => {
   const dish = mapDishRecord({ id: "d2", catId: 5, name: "Teriyaki" }, {});
   assert.equal(dish.lastCooked, undefined);
+});
+
+test("categoryPatchToBody sends notes: '' (not omitted) when clearing notes", () => {
+  const body = categoryPatchToBody({ notes: "" });
+  assert.equal(body.notes, "");
+  assert.ok("notes" in body);
+});
+
+test("categoryPatchToBody omits notes entirely when the patch doesn't touch it", () => {
+  const body = categoryPatchToBody({ name_en: "Renamed" });
+  assert.equal("notes" in body, false);
+});
+
+test("categoryPatchToBody still splits effort_minutes into effort_min/effort_max", () => {
+  const body = categoryPatchToBody({ effort_minutes: [10, 20] });
+  assert.equal(body.effort_min, 10);
+  assert.equal(body.effort_max, 20);
+  assert.equal("effort_minutes" in body, false);
 });
