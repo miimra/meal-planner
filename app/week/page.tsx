@@ -14,11 +14,15 @@ import { useCategories } from "../lib/store";
 export default function WeekPage() {
   const [mounted, setMounted] = useState(false);
   const [today] = useState(() => new Date());
-  const { categories, loading: categoriesLoading } = useCategories();
+  const { categories, loading: categoriesLoading, error: categoriesError } = useCategories();
   useEffect(() => setMounted(true), []);
 
   if (!mounted || categoriesLoading) {
     return <div className="h-96 animate-pulse rounded-3xl bg-bg-elevated" />;
+  }
+
+  if (categoriesError) {
+    return <p className="text-sm text-ink-faint">Couldn't load — check your connection.</p>;
   }
 
   const days = weekPlan(today);

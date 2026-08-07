@@ -29,8 +29,8 @@ function writeSundayChoice(key: string, categoryId: number | null) {
 export default function TodayPage() {
   const [mounted, setMounted] = useState(false);
   const [today] = useState(() => new Date());
-  const { categories, loading: categoriesLoading } = useCategories();
-  const { forCategory, markCooked } = useDishes();
+  const { categories, loading: categoriesLoading, error: categoriesError } = useCategories();
+  const { forCategory, markCooked, error: dishesError } = useDishes();
 
   const todayKey = dateKey(today);
   const plan = useMemo(() => planForDate(today), [today]);
@@ -46,6 +46,10 @@ export default function TodayPage() {
     return <div className="h-64 animate-pulse rounded-3xl bg-bg-elevated" />;
   }
 
+  if (categoriesError || dishesError) {
+    return <p className="text-sm text-ink-faint">Couldn't load — check your connection.</p>;
+  }
+
   // Design shows "Monday · 13 July".
   const weekday = today.toLocaleDateString("en-GB", { weekday: "long" });
   const dayMonth = today.toLocaleDateString("en-GB", { day: "numeric", month: "long" });
@@ -57,7 +61,9 @@ export default function TodayPage() {
   const chosen =
     plan.kind === "sunday-choice" && sunday !== null
       ? choices?.find((c) => c.catId === sunday)
-      : findCategory(categories, plan.categoryId!);
+      : plan.categoryId !== undefined
+        ? findCategory(categories, plan.categoryId)
+        : undefined;
 
   return (
     <main className="flex flex-col gap-6">
