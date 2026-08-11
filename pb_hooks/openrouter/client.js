@@ -15,7 +15,7 @@ function config() {
   };
 }
 
-function request(context, meals) {
+function request(context, meals, preferences) {
   const cfg = config();
   const result = $http.send({
     method: "POST",
@@ -30,7 +30,7 @@ function request(context, meals) {
     body: JSON.stringify({
       model: cfg.model,
       temperature: 0.65,
-      messages: prompt.messages(context, meals),
+      messages: prompt.messages(context, meals, preferences),
       response_format: { type: "json_object" },
     }),
   });
@@ -40,12 +40,12 @@ function request(context, meals) {
   return { meals: response.validateResponse(content, meals), model: cfg.model };
 }
 
-function generate(context, meals) {
+function generate(context, meals, preferences) {
   try {
-    return request(context, meals);
+    return request(context, meals, preferences);
   } catch (error) {
     if (String(error && error.message) !== "invalid_ai_response") throw error;
-    return request(context, meals);
+    return request(context, meals, preferences);
   }
 }
 

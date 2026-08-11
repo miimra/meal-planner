@@ -64,7 +64,8 @@ function helpText() {
     "/today — today’s plan",
     "/tomorrow — tomorrow’s plan",
     "/week — Monday to Sunday",
-    "/suggest [breakfast|lunch|dinner]",
+    "/suggest [breakfast|lunch|dinner] [preference]",
+    "Example: /suggest dinner seafood",
     "/last [breakfast|lunch|dinner]",
     "/buy [breakfast|lunch|dinner]",
     "/eatout [breakfast|lunch|dinner]",
@@ -135,9 +136,14 @@ function handleCommand(app, user, destination, message, parsed) {
     return true;
   }
   if (parsed.command === "suggest") {
+    if (parsed.args.length && !meal) {
+      client.sendMessage(destinationId, "Start with a meal, for example: <code>/suggest dinner meat</code>");
+      return true;
+    }
     try {
       const requested = meal ? [meal] : calendar.MEALS;
-      const suggestions = planning.generateSuggestions(app, tomorrow, requested);
+      const preference = commands.suggestionPreference(parsed);
+      const suggestions = planning.generateSuggestions(app, tomorrow, requested, preference);
       for (const suggestion of suggestions) sendSuggestion(app, destination, suggestion);
     } catch (error) {
       const message = friendlyError(error);
@@ -222,7 +228,12 @@ function handleCallback(app, user, destination, query) {
     }
     if (parts[1] === "next") {
       try {
-        const replacements = planning.generateSuggestions(app, suggestion.getString("date"), [suggestion.getString("meal")]);
+        const replacements = planning.generateSuggestions(
+          app,
+          suggestion.getString("date"),
+          [suggestion.getString("meal")],
+          suggestion.getString("request_text"),
+        );
         client.answerCallback(query.id, "New suggestion ready", false);
         sendSuggestion(app, destination, replacements[0]);
       } catch (error) {

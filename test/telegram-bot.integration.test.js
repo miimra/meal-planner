@@ -59,8 +59,12 @@ async function startMockServer() {
       const user = JSON.parse(body.messages.find((message) => message.role === "user").content);
       const meals = user.requestedMeals.map((meal) => ({
         meal,
-        name: meal === "dinner" ? "Telegram lemon salmon" : meal === "lunch" ? "Herb sandwich" : "Spinach omelette",
+        name: user.preferences[meal] ? user.preferences[meal] + " skillet" : meal === "dinner" ? "Telegram lemon salmon" : meal === "lunch" ? "Herb sandwich" : "Spinach omelette",
         reason: "It fits the meal and keeps this week varied.",
+        difficulty: user.preferences[meal] && /easy/i.test(user.preferences[meal]) ? "easy" : "medium",
+        prepMinutes: 10,
+        cookMinutes: 20,
+        ingredients: ["500 g main ingredient", "1 onion", "2 tbsp olive oil"],
         existingDishId: null,
       }));
       response.writeHead(200, { "Content-Type": "application/json" });
@@ -263,13 +267,24 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
   });
 
   let suggestion;
-  await t.test("OpenRouter suggestion is validated, stored, and sent", async () => {
-    const response = await webhook({ update_id: 4, message: { message_id: 3, from: { id: 111 }, chat: groupChat, text: "/suggest dinner" } });
+  await t.test("detailed OpenRouter suggestion respects and stores a free-form preference", async () => {
+    const response = await webhook({ update_id: 4, message: { message_id: 3, from: { id: 111 }, chat: groupChat, text: "/suggest dinner very easy meat" } });
     assert.equal(response.status, 200);
     assert.equal(mock.openrouter.length, 1);
     suggestion = (await list("meal_suggestions")).find((item) => item.meal === "dinner" && item.outcome === "pending");
-    assert.equal(suggestion.suggested_name, "Telegram lemon salmon");
+    assert.equal(suggestion.suggested_name, "very easy meat skillet");
+    assert.equal(suggestion.request_text, "very easy meat");
+    assert.equal(suggestion.difficulty, "easy");
+    assert.equal(suggestion.prep_minutes, 10);
+    assert.equal(suggestion.cook_minutes, 20);
+    assert.deepEqual(suggestion.ingredients, ["500 g main ingredient", "1 onion", "2 tbsp olive oil"]);
     assert.equal(suggestion.model, "test/model");
+    const request = JSON.parse(mock.openrouter[0].messages.find((message) => message.role === "user").content);
+    assert.equal(request.preferences.dinner, "very easy meat");
+    const sent = mock.telegram.filter((call) => call.method === "sendMessage").at(-1).body.text;
+    assert.match(sent, /Difficulty: <b>Easy<\/b>/);
+    assert.match(sent, /30 min/);
+    assert.match(sent, /What you need/);
   });
 
   const today = amsterdamDate();
@@ -288,7 +303,13 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
       callback_query: { id: "callback-out", from: { id: 111 }, data: `act:out:${tomorrow}:breakfast`, message: { message_id: 6, chat: groupChat } },
     });
     const assignments = await list("meal_assignments");
-    assert.ok(assignments.find((item) => item.date === tomorrow && item.meal === "dinner" && item.status === "planned" && item.dish));
+    const dinner = assignments.find((item) => item.date === tomorrow && item.meal === "dinner" && item.status === "planned" && item.dish);
+    assert.ok(dinner);
+    const acceptedDish = (await list("dishes")).find((item) => item.id === dinner.dish);
+    assert.equal(acceptedDish.difficulty, "easy");
+    assert.equal(acceptedDish.prep_minutes, 10);
+    assert.equal(acceptedDish.cook_minutes, 20);
+    assert.deepEqual(acceptedDish.ingredients, ["500 g main ingredient", "1 onion", "2 tbsp olive oil"]);
     assert.ok(assignments.find((item) => item.date === tomorrow && item.meal === "lunch" && item.status === "buy_food" && !item.dish));
     assert.ok(assignments.find((item) => item.date === tomorrow && item.meal === "breakfast" && item.status === "eating_out" && !item.dish));
   });
@@ -368,6 +389,19 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
     const request = mock.openrouter.at(-1);
     const context = JSON.parse(request.messages.find((message) => message.role === "user").content);
     assert.deepEqual(context.requestedMeals, ["breakfast", "lunch", "dinner"]);
+    assert.deepEqual(context.preferences, {});
+  });
+
+  await t.test("Another keeps the original custom preference", async () => {
+    await webhook({ update_id: 51, message: { message_id: 41, from: { id: 111 }, chat: groupChat, text: "/suggest lunch seafood" } });
+    const lunch = (await list("meal_suggestions")).find((item) => item.meal === "lunch" && item.outcome === "pending" && item.request_text === "seafood");
+    assert.ok(lunch);
+    await webhook({
+      update_id: 52,
+      callback_query: { id: "callback-another", from: { id: 111 }, data: `sg:next:${lunch.id}`, message: { message_id: 42, chat: groupChat } },
+    });
+    const context = JSON.parse(mock.openrouter.at(-1).messages.find((message) => message.role === "user").content);
+    assert.equal(context.preferences.lunch, "seafood");
   });
 
   await t.test("the website read model is public while private household data stays locked", async () => {

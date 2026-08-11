@@ -117,10 +117,15 @@ function aiContext(app, targetDate, meals) {
   return { targetDate, requested, week, dishes, feedback, preferences, rejected };
 }
 
-function generateSuggestions(app, targetDate, meals) {
+function generateSuggestions(app, targetDate, meals, requestText) {
   calendar.parseDate(targetDate);
   const requestedMeals = meals.map(calendar.assertMeal);
-  const generated = openrouter.generate(aiContext(app, targetDate, requestedMeals), requestedMeals);
+  const request = String(requestText || "").trim().slice(0, 200);
+  const preferences = {};
+  if (request) {
+    for (const meal of requestedMeals) preferences[meal] = request;
+  }
+  const generated = openrouter.generate(aiContext(app, targetDate, requestedMeals), requestedMeals, preferences);
   const stored = [];
   app.runInTransaction((tx) => {
     for (const item of generated.meals) {
@@ -146,6 +151,11 @@ function generateSuggestions(app, targetDate, meals) {
       record.set("suggested_name", item.name);
       record.set("outcome", "pending");
       record.set("reason", item.reason);
+      record.set("request_text", request);
+      record.set("difficulty", item.difficulty);
+      record.set("prep_minutes", item.prepMinutes);
+      record.set("cook_minutes", item.cookMinutes);
+      record.set("ingredients", item.ingredients);
       record.set("model", generated.model);
       record.set("prompt_version", prompt.PROMPT_VERSION);
       tx.save(record);
@@ -153,6 +163,14 @@ function generateSuggestions(app, targetDate, meals) {
     }
   });
   return stored;
+}
+
+function enrichDishFromSuggestion(dish, suggestion) {
+  if (!dish.getString("difficulty")) dish.set("difficulty", suggestion.getString("difficulty"));
+  if (!dish.getInt("prep_minutes")) dish.set("prep_minutes", suggestion.getInt("prep_minutes"));
+  if (!dish.getInt("cook_minutes")) dish.set("cook_minutes", suggestion.getInt("cook_minutes"));
+  const existingIngredients = dish.get("ingredients");
+  if (!existingIngredients || !existingIngredients.length) dish.set("ingredients", suggestion.get("ingredients"));
 }
 
 function upsertAssignment(app, date, meal) {
@@ -179,6 +197,10 @@ function acceptSuggestion(app, suggestionId, memberId) {
         dish.set("catId", category.getInt("catId"));
         dish.set("categories", [category.id]);
       }
+      enrichDishFromSuggestion(dish, suggestion);
+      tx.save(dish);
+    } else {
+      enrichDishFromSuggestion(dish, suggestion);
       tx.save(dish);
     }
 

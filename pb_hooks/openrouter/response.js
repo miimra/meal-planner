@@ -1,6 +1,7 @@
 "use strict";
 
 const MEALS = ["breakfast", "lunch", "dinner"];
+const DIFFICULTIES = ["easy", "medium", "hard"];
 
 function contentJson(content) {
   if (typeof content !== "string") throw new Error("invalid_ai_response");
@@ -27,10 +28,30 @@ function validateMeal(item, expected) {
   if (item.existingDishId !== null && typeof item.existingDishId !== "string") {
     throw new Error("invalid_ai_response");
   }
+  if (DIFFICULTIES.indexOf(item.difficulty) === -1) throw new Error("invalid_ai_response");
+  if (!Number.isInteger(item.prepMinutes) || item.prepMinutes < 0 || item.prepMinutes > 1440) {
+    throw new Error("invalid_ai_response");
+  }
+  if (!Number.isInteger(item.cookMinutes) || item.cookMinutes < 0 || item.cookMinutes > 1440) {
+    throw new Error("invalid_ai_response");
+  }
+  if (!Array.isArray(item.ingredients) || item.ingredients.length < 1 || item.ingredients.length > 15) {
+    throw new Error("invalid_ai_response");
+  }
+  const ingredients = item.ingredients.map((ingredient) => {
+    if (typeof ingredient !== "string" || !ingredient.trim() || ingredient.trim().length > 160) {
+      throw new Error("invalid_ai_response");
+    }
+    return ingredient.trim();
+  });
   return {
     meal: expected,
     name: item.name.trim(),
     reason: item.reason.trim(),
+    difficulty: item.difficulty,
+    prepMinutes: item.prepMinutes,
+    cookMinutes: item.cookMinutes,
+    ingredients,
     existingDishId: item.existingDishId ? item.existingDishId.trim() : null,
   };
 }

@@ -42,10 +42,26 @@ function weekText(week) {
 function suggestionText(suggestion, slot) {
   const category = slot.category ? "\nCategory: " + escape(slot.category.emoji + " " + slot.category.name) : "";
   const current = slot.dish ? "\nCurrently: " + escape(slot.dish.name) : "";
+  const request = suggestion.getString("request_text");
+  const prep = suggestion.getInt("prep_minutes");
+  const cook = suggestion.getInt("cook_minutes");
+  const difficulty = suggestion.getString("difficulty");
+  const rawIngredients = suggestion.get("ingredients");
+  const ingredients = Array.isArray(rawIngredients) ? rawIngredients : [];
+  const details = [
+    "🧑‍🍳 Difficulty: <b>" + escape(difficulty.charAt(0).toUpperCase() + difficulty.slice(1)) + "</b>",
+    "⏱ Time: <b>" + (prep + cook) + " min</b> (" + prep + " prep + " + cook + " cooking)",
+  ];
+  if (request) details.unshift("🎯 Requested: <b>" + escape(request) + "</b>");
+  if (ingredients.length) {
+    details.push("\n🛒 <b>What you need</b>");
+    for (const ingredient of ingredients) details.push("• " + escape(ingredient));
+  }
   return [
     ICONS[slot.meal] + " <b>Tomorrow’s " + LABELS[slot.meal].toLowerCase() + "</b>" + category + current,
     "\n<b>" + escape(suggestion.getString("suggested_name")) + "</b>",
     escape(suggestion.getString("reason")),
+    "\n" + details.join("\n"),
   ].join("\n");
 }
 

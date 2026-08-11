@@ -1,8 +1,8 @@
 "use strict";
 
-const PROMPT_VERSION = "telegram-v1";
+const PROMPT_VERSION = "telegram-v2";
 
-function messages(context, meals) {
+function messages(context, meals, preferences) {
   return [
     {
       role: "system",
@@ -14,14 +14,20 @@ function messages(context, meals) {
         "Breakfast and lunch may be selected by meal type when category is null.",
         "Avoid dishes already assigned in the supplied Monday-Sunday week.",
         "Prefer positively rated dishes, but keep variety.",
+        "Strictly follow each meal's user preference when supplied.",
+        "If the preference names an ingredient or food type, make it a clear part of the dish and ingredients.",
+        "If the preference describes effort or time, choose a dish that genuinely matches it.",
         "Never invent an existingDishId. Use null for a newly named dish.",
         "Keep each reason to one short sentence.",
-        "Output: {\"meals\":[{\"meal\":\"breakfast\",\"name\":\"...\",\"reason\":\"...\",\"existingDishId\":null}]}",
+        "List practical ingredients with household quantities where useful.",
+        "Difficulty must be easy, medium, or hard.",
+        "prepMinutes and cookMinutes must be whole numbers from 0 to 1440.",
+        "Output: {\"meals\":[{\"meal\":\"breakfast\",\"name\":\"...\",\"reason\":\"...\",\"difficulty\":\"easy\",\"prepMinutes\":10,\"cookMinutes\":15,\"ingredients\":[\"4 eggs\",\"100 g spinach\"],\"existingDishId\":null}]}",
       ].join(" "),
     },
     {
       role: "user",
-      content: JSON.stringify({ requestedMeals: meals, context }),
+      content: JSON.stringify({ requestedMeals: meals, preferences: preferences || {}, context }),
     },
   ];
 }

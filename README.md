@@ -75,7 +75,7 @@ values are idempotent.
 /today
 /tomorrow
 /week
-/suggest [breakfast|lunch|dinner]
+/suggest [breakfast|lunch|dinner] [preference]
 /last [breakfast|lunch|dinner]
 /buy [breakfast|lunch|dinner]
 /eatout [breakfast|lunch|dinner]
@@ -87,6 +87,16 @@ values are idempotent.
 ```
 
 Only commands and inline buttons are interpreted. Ordinary text is ignored.
+
+Suggestions include difficulty, preparation/cooking time, and a practical
+ingredient list. Add a free-form constraint after the meal when you want a
+specific direction; the **Another** button keeps the same constraint:
+
+```text
+/suggest dinner meat
+/suggest dinner seafood
+/suggest lunch very easy
+```
 
 At 18:30, PocketBase asks for simple feedback on today's assigned meals and
 sends separate breakfast, lunch, and dinner suggestions for tomorrow. Dinner
