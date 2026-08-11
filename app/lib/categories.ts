@@ -1,14 +1,13 @@
 // app/lib/categories.ts
 // The 12 fixed categories. Their content lives in PocketBase (see the
-// `categories` collection in pb_migrations/) so it's server-editable while
-// logged in; this file only keeps the shared TypeScript shape and the
-// static UI labels.
+// `categories` collection in pb_migrations/); this file only keeps the shared
+// TypeScript shape and static UI labels.
 
 export type Style = "iranian" | "international" | "either";
 export type Effort = "quick" | "medium" | "medium-heavy" | "heavy";
 
 export interface Category {
-  /** PocketBase record id — needed to call update(). */
+  /** PocketBase record id used by meal assignment relations. */
   pbId: string;
   /** Stable 1–12 id. `rotation.ts`'s day tables reference categories by this. */
   catId: number;

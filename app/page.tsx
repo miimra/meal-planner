@@ -1,364 +1,138 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { Category, findCategory } from "./lib/categories";
-import { addDays, dateKey, planForDate, planLabel, PlanDay } from "./lib/rotation";
-import { Dish, useCategories, useDishes } from "./lib/store";
-import { splitDishName } from "./lib/dishName";
-import { ClayPill, EffortBadge, EmojiTile } from "./components/badges";
+import { useMemo, useState } from "react";
+import {
+  MEALS,
+  addDateDays,
+  amsterdamToday,
+  buildDay,
+  dayLabel,
+  type MealSlot,
+  type PlanDay,
+} from "./lib/plan.ts";
+import { useMealPlan } from "./lib/useMealPlan.ts";
 
-const SUNDAY_KEY = "mp_sunday_v1";
+const MEAL_META = {
+  breakfast: { icon: "☀️", label: "Breakfast", tint: "#fff5cc" },
+  lunch: { icon: "🥪", label: "Lunch", tint: "#e2f7ed" },
+  dinner: { icon: "🌙", label: "Dinner", tint: "#eee7ff" },
+} as const;
 
-function readSundayChoice(key: string): number | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const map = JSON.parse(window.localStorage.getItem(SUNDAY_KEY) || "{}");
-    return map[key] ?? null;
-  } catch {
-    return null;
-  }
-}
-function writeSundayChoice(key: string, categoryId: number | null) {
-  const map = JSON.parse(window.localStorage.getItem(SUNDAY_KEY) || "{}");
-  if (categoryId === null) delete map[key];
-  else map[key] = categoryId;
-  window.localStorage.setItem(SUNDAY_KEY, JSON.stringify(map));
-}
+const SPECIAL = {
+  unplanned: { icon: "✨", title: "Waiting for a suggestion", detail: "The bot will plan this meal." },
+  skipped: { icon: "⏭️", title: "Skipped", detail: "No meal is planned." },
+  buy_food: { icon: "🛒", title: "Buy food", detail: "Something easy from outside." },
+  eating_out: { icon: "🍽️", title: "Eating out", detail: "No cooking needed." },
+  planned: { icon: "✨", title: "Planned", detail: "" },
+  cooked: { icon: "✅", title: "Cooked", detail: "" },
+} as const;
 
-export default function TodayPage() {
-  const [mounted, setMounted] = useState(false);
-  const [today] = useState(() => new Date());
-  const { categories, loading: categoriesLoading, error: categoriesError } = useCategories();
-  const { forCategory, markCooked, error: dishesError } = useDishes();
-
-  const todayKey = dateKey(today);
-  const plan = useMemo(() => planForDate(today), [today]);
-  const tomorrowPlan = useMemo(() => planForDate(addDays(today, 1)), [today]);
-
-  const [sunday, setSunday] = useState<number | null>(null);
-  useEffect(() => {
-    setMounted(true);
-    setSunday(readSundayChoice(todayKey));
-  }, [todayKey]);
-
-  if (!mounted || categoriesLoading) {
-    return <div className="h-64 animate-pulse rounded-3xl bg-bg-elevated" />;
-  }
-
-  if (categoriesError || dishesError) {
-    return <p className="text-sm text-ink-faint">Couldn't load — check your connection.</p>;
-  }
-
-  // Design shows "Monday · 13 July".
-  const weekday = today.toLocaleDateString("en-GB", { weekday: "long" });
-  const dayMonth = today.toLocaleDateString("en-GB", { day: "numeric", month: "long" });
-  const dateDot = `${weekday} · ${dayMonth}`;
-
-  const choices = plan.choiceIds?.map((id) => findCategory(categories, id)).filter(
-    (c): c is Category => c !== undefined
+export default function HomePage() {
+  const [today] = useState(() => amsterdamToday());
+  const tomorrow = addDateDays(today, 1);
+  const { assignments, categories, dishes, error, loading, refresh } = useMealPlan(today, tomorrow);
+  const days = useMemo(
+    () => [buildDay(today, categories, dishes, assignments), buildDay(tomorrow, categories, dishes, assignments)],
+    [assignments, categories, dishes, today, tomorrow],
   );
-  const chosen =
-    plan.kind === "sunday-choice" && sunday !== null
-      ? choices?.find((c) => c.catId === sunday)
-      : plan.categoryId !== undefined
-        ? findCategory(categories, plan.categoryId)
-        : undefined;
 
-  return (
-    <main className="flex flex-col gap-6">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight">{dateDot}</h1>
-          <p className="mt-0.5 text-sm text-ink-faint">✨ Tonight&apos;s little plan</p>
-        </div>
-        <ClayPill>Week {plan.week}</ClayPill>
-      </header>
-
-      {plan.kind === "eat-out" && <EatOutCard />}
-
-      {plan.kind === "sunday-choice" && sunday === null && (
-        <SundayChooser
-          choices={choices!}
-          onPick={(id) => {
-            writeSundayChoice(todayKey, id);
-            setSunday(id);
-          }}
-        />
-      )}
-
-      {chosen && (
-        <>
-          <HeroCard
-            category={chosen}
-            onChangeChoice={
-              plan.kind === "sunday-choice"
-                ? () => {
-                    writeSundayChoice(todayKey, null);
-                    setSunday(null);
-                  }
-                : undefined
-            }
-          />
-          <DishList
-            dishes={forCategory(chosen.catId)}
-            todayKey={todayKey}
-            onToggle={markCooked}
-          />
-        </>
-      )}
-
-      <TomorrowPreview plan={tomorrowPlan} categories={categories} />
-    </main>
-  );
-}
-
-// ── Hero card ────────────────────────────────────────────────────────────────
-
-function HeroCard({
-  category,
-  onChangeChoice,
-}: {
-  category: Category;
-  onChangeChoice?: () => void;
-}) {
-  return (
-    <section
-      className="relative overflow-hidden rounded-[32px] p-5"
-      style={{
-        background:
-          "linear-gradient(150deg, var(--hero-from), var(--hero-via) 55%, var(--hero-to))",
-        boxShadow: "var(--shadow)",
-        border: "1px solid var(--line)",
-      }}
-    >
-      <span className="animate-twinkle pointer-events-none absolute right-5 top-4 text-lg">
-        ✨
-      </span>
-      <span
-        className="animate-twinkle pointer-events-none absolute right-12 top-10 text-xs"
-        style={{ animationDelay: "0.9s" }}
-      >
-        ⭐
-      </span>
-
-      <div className="flex items-start gap-4">
-        <EmojiTile emoji={category.emoji} />
-        <div className="min-w-0 flex-1 pt-0.5">
-          <p className="text-xs font-extrabold uppercase tracking-widest text-accent">
-            ✨ Tonight
-          </p>
-          <h2 className="font-display mt-1 text-[28px] font-bold leading-tight tracking-tight">
-            {category.name_en}
-          </h2>
-          <p className="fa mt-1 text-lg text-ink-soft">{category.name_fa}</p>
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <EffortBadge category={category} />
-        {onChangeChoice && (
-          <button
-            onClick={onChangeChoice}
-            className="text-sm font-semibold text-accent underline underline-offset-2"
-          >
-            Change choice
-          </button>
-        )}
-      </div>
-
-      {category.notes && (
-        <p className="mt-4 rounded-2xl bg-clay-soft px-4 py-3 text-sm font-medium text-clay-ink">
-          💡 {category.notes}
-        </p>
-      )}
-    </section>
-  );
-}
-
-// ── Dish list ────────────────────────────────────────────────────────────────
-
-function DishList({
-  dishes,
-  todayKey,
-  onToggle,
-}: {
-  dishes: Dish[];
-  todayKey: string;
-  onToggle: (id: string, key: string) => void;
-}) {
-  const cookedToday = dishes.find((d) => d.lastCooked === todayKey);
-
-  if (dishes.length === 0) {
+  if (loading) return <LoadingHome />;
+  if (error) {
     return (
-      <section>
-        <SectionLabel>Cook one of these</SectionLabel>
-        <p className="rounded-2xl bg-bg-elevated p-4 text-sm text-ink-faint" style={{ boxShadow: "var(--shadow-sm)" }}>
-          No dishes have been added for this category yet.
-        </p>
-      </section>
+      <main className="flex min-h-[70dvh] items-center justify-center">
+        <button className="rounded-3xl bg-bg-elevated px-6 py-5 font-bold text-accent shadow-lg" onClick={refresh}>
+          {error} Tap to retry.
+        </button>
+      </main>
     );
   }
 
   return (
+    <main className="flex flex-col gap-10 pb-4">
+      <header className="pt-2">
+        <p className="text-sm font-extrabold uppercase tracking-[0.24em] text-accent">Family table</p>
+        <h1 className="font-display mt-2 text-4xl font-bold leading-none tracking-tight sm:text-5xl">
+          Today & tomorrow
+        </h1>
+        <p className="mt-3 max-w-sm text-base text-ink-soft">The whole plan, without the noise.</p>
+      </header>
+
+      <DaySection day={days[0]} title="Today" featured />
+      <DaySection day={days[1]} title="Tomorrow" />
+    </main>
+  );
+}
+
+function DaySection({ day, title, featured = false }: { day: PlanDay; title: string; featured?: boolean }) {
+  return (
     <section>
-      <SectionLabel>Cook one of these</SectionLabel>
-      <ul className="flex flex-col gap-2.5">
-        {dishes.map((dish) => (
-          <DishCard
-            key={dish.id}
-            dish={dish}
-            cooked={dish.lastCooked === todayKey}
-            onToggle={() => onToggle(dish.id, todayKey)}
-          />
-        ))}
-      </ul>
-      {cookedToday && (
-        <p className="animate-pop mt-4 flex items-center justify-center gap-1.5 rounded-2xl bg-good-soft py-2.5 text-center text-sm font-bold text-good">
-          🌸 Cooked today — you did it! ✨
-        </p>
-      )}
+      <div className="mb-4 flex items-end justify-between gap-4 px-1">
+        <div>
+          <p className="font-display text-3xl font-bold">{title}</p>
+          <p className="mt-0.5 text-sm font-medium text-ink-faint">{dayLabel(day.date)}</p>
+        </div>
+        {featured && <span className="rounded-full bg-accent-soft px-3 py-1.5 text-xs font-extrabold text-accent-ink">Right now</span>}
+      </div>
+      <div className="grid gap-4">
+        {MEALS.map((meal) => <MealCard key={meal} slot={day.meals[meal]} featured={featured && meal === "dinner"} />)}
+      </div>
     </section>
   );
 }
 
-function DishCard({
-  dish,
-  cooked,
-  onToggle,
-}: {
-  dish: Dish;
-  cooked: boolean;
-  onToggle: () => void;
-}) {
-  const { primary, primaryFa, secondary, secondaryFa } = splitDishName(dish.name);
-  return (
-    <li>
-      <button
-        onClick={onToggle}
-        className="flex w-full items-center gap-3 rounded-[22px] px-4 py-3.5 text-left transition-all active:scale-[0.98]"
-        style={{
-          background: cooked ? "var(--good-soft)" : "var(--bg-elevated)",
-          boxShadow: "var(--shadow-sm)",
-          outline: cooked ? "2px solid var(--good)" : "2px solid transparent",
-        }}
-      >
-        <div className="min-w-0 flex-1">
-          <p
-            className={`font-bold ${primaryFa ? "fa" : ""} ${
-              cooked ? "text-ink-soft line-through" : ""
-            }`}
-          >
-            {primary}
-          </p>
-          {secondary && (
-            <p
-              className={`mt-0.5 text-right text-sm text-ink-faint ${
-                secondaryFa ? "fa" : ""
-              }`}
-            >
-              {secondary}
-            </p>
-          )}
-        </div>
-        <span
-          className={`flex h-8 w-8 flex-none items-center justify-center rounded-full border-2 text-sm ${
-            cooked ? "animate-pop" : ""
-          }`}
-          style={{
-            borderColor: cooked ? "var(--good)" : "var(--line)",
-            background: cooked ? "var(--good)" : "transparent",
-            color: "#fff",
-          }}
-        >
-          {cooked ? "🌸" : ""}
-        </span>
-      </button>
-    </li>
-  );
-}
+function MealCard({ slot, featured }: { slot: MealSlot; featured: boolean }) {
+  const meta = MEAL_META[slot.meal];
+  const special = SPECIAL[slot.status];
+  const title = slot.dish?.name || special.title;
+  const detail = slot.dish
+    ? slot.status === "cooked" ? "Made today" : slot.selectionSource === "last_meal" ? "A recent favourite" : "Your exact meal plan"
+    : special.detail;
 
-// ── Weekend & shared bits ────────────────────────────────────────────────────
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="font-display mb-3 px-1 text-sm font-bold text-ink-soft">
-      {children}
-    </h3>
-  );
-}
-
-function EatOutCard() {
-  return (
-    <section
-      className="relative overflow-hidden rounded-[32px] p-6"
+    <article
+      className={`relative overflow-hidden rounded-[32px] border p-5 ${featured ? "sm:p-7" : "sm:p-6"}`}
       style={{
-        background:
-          "linear-gradient(150deg, var(--hero-from), var(--hero-via) 55%, var(--hero-to))",
-        boxShadow: "var(--shadow)",
-        border: "1px solid var(--line)",
+        background: featured
+          ? "linear-gradient(145deg, var(--hero-from), var(--hero-via) 55%, var(--hero-to))"
+          : "var(--bg-elevated)",
+        borderColor: featured ? "var(--accent)" : "var(--line)",
+        boxShadow: featured ? "var(--shadow)" : "var(--shadow-sm)",
       }}
     >
-      <span className="animate-twinkle pointer-events-none absolute right-6 top-5 text-lg">
-        ✨
-      </span>
-      <div className="flex items-center gap-4">
-        <EmojiTile emoji="🍴" />
-        <div>
-          <p className="text-xs font-extrabold uppercase tracking-widest text-accent">
-            ✨ Tonight
-          </p>
-          <h2 className="font-display mt-1 text-2xl font-bold tracking-tight">
-            Eating out
+      <div className="flex items-start gap-4">
+        <div className="flex h-14 w-14 flex-none items-center justify-center rounded-2xl text-3xl" style={{ background: meta.tint }}>
+          {slot.dish ? meta.icon : special.icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-ink-faint">{meta.label}</p>
+            {slot.category && (
+              <span className="rounded-full bg-clay-soft px-2.5 py-1 text-xs font-bold text-clay-ink">
+                {slot.category.emoji} {slot.category.name_en}
+              </span>
+            )}
+          </div>
+          <h2 className={`font-display mt-2 font-bold leading-tight tracking-tight ${featured ? "text-3xl" : "text-2xl"}`}>
+            {title}
           </h2>
-          <p className="mt-1 text-ink-soft">No plan tonight. Relax and enjoy 💛</p>
+          <p className="mt-1.5 text-sm font-medium text-ink-soft">{detail}</p>
         </div>
       </div>
-    </section>
+      {slot.category?.name_fa && <p className="fa mt-4 text-right text-sm text-ink-faint">{slot.category.name_fa}</p>}
+    </article>
   );
 }
 
-function SundayChooser({
-  choices,
-  onPick,
-}: {
-  choices: Category[];
-  onPick: (id: number) => void;
-}) {
+function LoadingHome() {
   return (
-    <section>
-      <SectionLabel>🌙 Sunday — your pick</SectionLabel>
-      <div className="grid grid-cols-2 gap-3">
-        {choices.map((c) => (
-          <button
-            key={c.catId}
-            onClick={() => onPick(c.catId)}
-            className="flex flex-col items-center gap-1 rounded-[26px] bg-bg-elevated p-5 text-center transition-all active:scale-[0.97]"
-            style={{ boxShadow: "var(--shadow-sm)", border: "2px solid var(--line)" }}
-          >
-            <span className="animate-bob text-5xl">{c.emoji}</span>
-            <span className="font-display mt-2 font-bold">{c.name_en}</span>
-            <span className="fa text-sm text-ink-soft">{c.name_fa}</span>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function TomorrowPreview({ plan, categories }: { plan: PlanDay; categories: Category[] }) {
-  const { emoji, title } = planLabel(plan, categories);
-
-  return (
-    <Link
-      href="/week"
-      className="flex items-center justify-between rounded-[20px] border-2 border-line bg-bg-elevated/60 px-4 py-3 text-sm transition-colors active:scale-[0.99]"
-      style={{ boxShadow: "var(--shadow-sm)" }}
-    >
-      <span className="text-ink-faint">🌷 Tomorrow · {plan.dayName}</span>
-      <span className="font-display font-bold text-ink">
-        {emoji} {title}
-      </span>
-    </Link>
+    <main className="flex flex-col gap-8 pt-2">
+      <div className="h-24 animate-pulse rounded-3xl bg-bg-elevated" />
+      {[0, 1].map((section) => (
+        <section key={section} className="space-y-4">
+          <div className="h-12 w-44 animate-pulse rounded-2xl bg-bg-elevated" />
+          {[0, 1, 2].map((card) => <div key={card} className="h-36 animate-pulse rounded-[32px] bg-bg-elevated" />)}
+        </section>
+      ))}
+    </main>
   );
 }

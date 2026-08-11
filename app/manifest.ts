@@ -4,9 +4,9 @@ export const dynamic = "force-static";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "What's for Dinner?",
-    short_name: "Dinner",
-    description: "A calm, pre-decided dinner plan on a 2-week rotation.",
+    name: "Family Meal Plan",
+    short_name: "Meals",
+    description: "Today, tomorrow, and the family meal plan for the week.",
     start_url: "/",
     display: "standalone",
     background_color: "#fdf1f7",

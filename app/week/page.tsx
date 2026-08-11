@@ -1,96 +1,80 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import {
-  addDays,
-  dateKey,
-  mondayOf,
-  planLabel,
-  toDayIndex,
-  weekPlan,
-} from "../lib/rotation";
-import { useCategories } from "../lib/store";
+  MEALS,
+  addDateDays,
+  amsterdamToday,
+  buildDay,
+  dayLabel,
+  mondayKey,
+  type MealSlot,
+} from "../lib/plan.ts";
+import { useMealPlan } from "../lib/useMealPlan.ts";
+
+const ICON = { breakfast: "☀️", lunch: "🥪", dinner: "🌙" } as const;
+const EMPTY = { unplanned: "Waiting", skipped: "Skipped", buy_food: "Buy food", eating_out: "Eat out", planned: "Planned", cooked: "Cooked" } as const;
 
 export default function WeekPage() {
-  const [mounted, setMounted] = useState(false);
-  const [today] = useState(() => new Date());
-  const { categories, loading: categoriesLoading, error: categoriesError } = useCategories();
-  useEffect(() => setMounted(true), []);
+  const [today] = useState(() => amsterdamToday());
+  const start = mondayKey(today);
+  const end = addDateDays(start, 6);
+  const { assignments, categories, dishes, error, loading, refresh } = useMealPlan(start, end);
+  const days = useMemo(
+    () => Array.from({ length: 7 }, (_, index) => buildDay(addDateDays(start, index), categories, dishes, assignments)),
+    [assignments, categories, dishes, start],
+  );
 
-  if (!mounted || categoriesLoading) {
-    return <div className="h-96 animate-pulse rounded-3xl bg-bg-elevated" />;
-  }
-
-  if (categoriesError) {
-    return <p className="text-sm text-ink-faint">Couldn't load — check your connection.</p>;
-  }
-
-  const days = weekPlan(today);
-  const monday = mondayOf(today);
-  const todayIdx = toDayIndex(today);
-  const todayKey = dateKey(today);
+  if (loading) return <div className="h-[70dvh] animate-pulse rounded-[36px] bg-bg-elevated" />;
+  if (error) return <button onClick={refresh} className="rounded-3xl bg-bg-elevated p-6 font-bold text-accent">{error} Tap to retry.</button>;
 
   return (
-    <main className="flex flex-col gap-5">
-      <header>
-        <h1 className="font-display text-2xl font-bold">🗓️ This week</h1>
-        <p className="text-sm text-ink-faint">
-          Week {days[0].week} of the rotation
-        </p>
+    <main className="flex flex-col gap-6 pb-4">
+      <header className="pt-2">
+        <p className="text-sm font-extrabold uppercase tracking-[0.24em] text-accent">Monday to Sunday</p>
+        <h1 className="font-display mt-2 text-4xl font-bold tracking-tight">The week</h1>
+        <p className="mt-2 text-sm font-medium text-ink-soft">{start} → {end}</p>
       </header>
 
-      <ul className="flex flex-col gap-2.5">
-        {days.map((plan) => {
-          const date = addDays(monday, plan.day);
-          const isToday = dateKey(date) === todayKey;
-          const label = planLabel(plan, categories);
-          const isWeekend = plan.day >= 5;
-
-          return (
-            <li
-              key={plan.day}
-              className="flex items-center gap-4 rounded-[22px] p-3.5"
-              style={{
-                background: isToday
-                  ? "linear-gradient(150deg, var(--hero-from), var(--hero-via) 60%, var(--hero-to))"
-                  : "var(--bg-elevated)",
-                boxShadow: "var(--shadow)",
-                border: isToday ? "2px solid var(--accent)" : "2px solid transparent",
-                opacity: isWeekend ? 0.9 : 1,
-              }}
-            >
-              <div className="flex w-12 flex-none flex-col items-center">
-                <span className="text-xs font-semibold text-ink-faint">
-                  {plan.dayName.slice(0, 3)}
-                </span>
-                <span
-                  className="font-display text-xl font-bold"
-                  style={{ color: isToday ? "var(--accent)" : "var(--ink)" }}
-                >
-                  {date.getDate()}
-                </span>
+      <div className="flex flex-col gap-4">
+        {days.map((day) => (
+          <article
+            key={day.date}
+            className="overflow-hidden rounded-[30px] border p-4 sm:p-5"
+            style={{
+              background: day.date === today ? "linear-gradient(145deg, var(--hero-from), var(--hero-via), var(--hero-to))" : "var(--bg-elevated)",
+              borderColor: day.date === today ? "var(--accent)" : "var(--line)",
+              boxShadow: day.date === today ? "var(--shadow)" : "var(--shadow-sm)",
+            }}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="font-display text-xl font-bold">{dayLabel(day.date, "short")}</h2>
+                <p className="text-xs font-semibold text-ink-faint">{day.date}</p>
               </div>
-
-              <span className={`text-3xl ${isToday ? "animate-bob" : ""}`}>
-                {label.emoji}
-              </span>
-
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-bold">{label.title}</p>
-                {label.fa && (
-                  <p className="fa truncate text-sm text-ink-soft">{label.fa}</p>
-                )}
-              </div>
-
-              {isToday && (
-                <span className="flex-none rounded-full bg-accent px-2.5 py-1 text-xs font-bold text-white">
-                  ✨ Today
-                </span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+              {day.date === today && <span className="rounded-full bg-accent px-3 py-1 text-xs font-extrabold text-white">Today</span>}
+            </div>
+            <div className="grid gap-2.5">
+              {MEALS.map((meal) => <WeekMeal key={meal} slot={day.meals[meal]} />)}
+            </div>
+          </article>
+        ))}
+      </div>
     </main>
+  );
+}
+
+function WeekMeal({ slot }: { slot: MealSlot }) {
+  const name = slot.dish?.name || EMPTY[slot.status];
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-2xl bg-bg/55 px-3 py-3">
+      <span className="text-xl">{ICON[slot.meal]}</span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-bold">{name}</p>
+        <p className="truncate text-xs font-medium text-ink-faint">
+          {slot.category ? `${slot.category.emoji} ${slot.category.name_en}` : slot.meal}
+        </p>
+      </div>
+    </div>
   );
 }

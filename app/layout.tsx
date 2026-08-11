@@ -18,13 +18,13 @@ const baloo = Baloo_2({
 });
 
 export const metadata: Metadata = {
-  title: "What's for Dinner?",
-  description: "A calm, pre-decided dinner plan on a 2-week rotation.",
+  title: "Family Meal Plan",
+  description: "Today, tomorrow, and the family meal plan for the week.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Dinner",
+    title: "Meals",
   },
 };
 
