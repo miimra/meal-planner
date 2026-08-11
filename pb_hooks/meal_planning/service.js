@@ -157,6 +157,7 @@ function generateSuggestions(app, targetDate, meals, requestText) {
       record.set("prep_minutes", item.prepMinutes);
       record.set("cook_minutes", item.cookMinutes);
       record.set("ingredients", item.ingredients);
+      record.set("baby_notes", item.babyServing);
       record.set("model", generated.model);
       record.set("prompt_version", prompt.PROMPT_VERSION);
       tx.save(record);

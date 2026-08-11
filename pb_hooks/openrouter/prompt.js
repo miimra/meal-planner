@@ -1,6 +1,6 @@
 "use strict";
 
-const PROMPT_VERSION = "telegram-v2";
+const PROMPT_VERSION = "telegram-v3";
 
 function messages(context, meals, preferences) {
   return [
@@ -10,6 +10,13 @@ function messages(context, meals, preferences) {
         "You plan meals for one household.",
         "Return JSON only, with no Markdown.",
         "Suggest one exact dish for each requested meal.",
+        "Every dish and ingredient quantity must serve exactly two adults and one baby.",
+        "Every dish must be baby-safe and include a short dish-specific babyServing instruction.",
+        "Set aside the baby's portion before adult seasoning and use a soft age-appropriate texture without obvious choking forms.",
+        "Do not use honey, undercooked eggs/meat/fish, or unpasteurized ingredients.",
+        "Use no chili or spicy heat.",
+        "Make meals vegetable-forward with generous vegetables.",
+        "Use little added salt and sugar; prefer herbs, lemon, and naturally flavorful ingredients.",
         "Respect the supplied dinner category when it is present.",
         "Breakfast and lunch may be selected by meal type when category is null.",
         "Avoid dishes already assigned in the supplied Monday-Sunday week.",
@@ -22,7 +29,7 @@ function messages(context, meals, preferences) {
         "List practical ingredients with household quantities where useful.",
         "Difficulty must be easy, medium, or hard.",
         "prepMinutes and cookMinutes must be whole numbers from 0 to 1440.",
-        "Output: {\"meals\":[{\"meal\":\"breakfast\",\"name\":\"...\",\"reason\":\"...\",\"difficulty\":\"easy\",\"prepMinutes\":10,\"cookMinutes\":15,\"ingredients\":[\"4 eggs\",\"100 g spinach\"],\"existingDishId\":null}]}",
+        "Output: {\"meals\":[{\"meal\":\"breakfast\",\"name\":\"...\",\"reason\":\"...\",\"difficulty\":\"easy\",\"prepMinutes\":10,\"cookMinutes\":15,\"ingredients\":[\"4 eggs\",\"200 g spinach\"],\"babyServing\":\"Set aside before salting; cook fully and chop to an age-appropriate soft texture.\",\"existingDishId\":null}]}",
       ].join(" "),
     },
     {

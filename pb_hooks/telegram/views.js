@@ -47,11 +47,15 @@ function suggestionText(suggestion, slot) {
   const prep = suggestion.getInt("prep_minutes");
   const cook = suggestion.getInt("cook_minutes");
   const difficulty = suggestion.getString("difficulty");
+  const babyNotes = suggestion.getString("baby_notes");
   const ingredients = json.arrayField(suggestion, "ingredients");
   const details = [
+    "👨‍👩‍👶 Serves: <b>2 adults + 1 baby</b>",
+    "🥦 <b>Baby-safe · no spicy heat · extra vegetables · low salt &amp; sugar</b>",
     "🧑‍🍳 Difficulty: <b>" + escape(difficulty.charAt(0).toUpperCase() + difficulty.slice(1)) + "</b>",
     "⏱ Time: <b>" + (prep + cook) + " min</b> (" + prep + " prep + " + cook + " cooking)",
   ];
+  if (babyNotes) details.push("👶 Baby serving: " + escape(babyNotes));
   if (request) details.unshift("🎯 Requested: <b>" + escape(request) + "</b>");
   if (ingredients.length) {
     details.push("\n🛒 <b>What you need</b>");

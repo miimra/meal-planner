@@ -44,6 +44,9 @@ function validateMeal(item, expected) {
     }
     return ingredient.trim();
   });
+  if (typeof item.babyServing !== "string" || !item.babyServing.trim() || item.babyServing.trim().length > 400) {
+    throw new Error("invalid_ai_response");
+  }
   return {
     meal: expected,
     name: item.name.trim(),
@@ -52,6 +55,7 @@ function validateMeal(item, expected) {
     prepMinutes: item.prepMinutes,
     cookMinutes: item.cookMinutes,
     ingredients,
+    babyServing: item.babyServing.trim(),
     existingDishId: item.existingDishId ? item.existingDishId.trim() : null,
   };
 }

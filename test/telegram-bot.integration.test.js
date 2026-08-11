@@ -65,6 +65,7 @@ async function startMockServer() {
         prepMinutes: 10,
         cookMinutes: 20,
         ingredients: ["500 g main ingredient", "1 onion", "2 tbsp olive oil"],
+        babyServing: "Set aside before seasoning, cook fully, and mash to a soft texture.",
         existingDishId: null,
       }));
       response.writeHead(200, { "Content-Type": "application/json" });
@@ -278,14 +279,23 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
     assert.equal(suggestion.prep_minutes, 10);
     assert.equal(suggestion.cook_minutes, 20);
     assert.deepEqual(suggestion.ingredients, ["500 g main ingredient", "1 onion", "2 tbsp olive oil"]);
+    assert.equal(suggestion.baby_notes, "Set aside before seasoning, cook fully, and mash to a soft texture.");
     assert.equal(suggestion.model, "test/model");
     const request = JSON.parse(mock.openrouter[0].messages.find((message) => message.role === "user").content);
     assert.equal(request.preferences.dinner, "very easy meat");
+    const systemPrompt = mock.openrouter[0].messages.find((message) => message.role === "system").content;
+    assert.match(systemPrompt, /two adults and one baby/);
+    assert.match(systemPrompt, /no chili or spicy heat/i);
+    assert.match(systemPrompt, /vegetable-forward/);
+    assert.match(systemPrompt, /little added salt and sugar/);
     const sent = mock.telegram.filter((call) => call.method === "sendMessage").at(-1).body.text;
     assert.match(sent, /Difficulty: <b>Easy<\/b>/);
     assert.match(sent, /30 min/);
     assert.match(sent, /What you need/);
     assert.match(sent, /500 g main ingredient/);
+    assert.match(sent, /2 adults \+ 1 baby/);
+    assert.match(sent, /Baby-safe/);
+    assert.match(sent, /Baby serving:/);
     assert.doesNotMatch(sent, /53\n|91\n|44\n/);
   });
 

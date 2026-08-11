@@ -98,6 +98,10 @@ specific direction; the **Another** button keeps the same constraint:
 /suggest lunch very easy
 ```
 
+Every generated meal is sized for two adults and one baby. Suggestions are
+vegetable-forward, non-spicy, low in added salt and sugar, and include a
+dish-specific instruction for preparing the baby's portion safely.
+
 At 18:30, PocketBase asks for simple feedback on today's assigned meals and
 sends separate breakfast, lunch, and dinner suggestions for tomorrow. Dinner
 uses the existing two-week rotation category; breakfast and lunch use meal
