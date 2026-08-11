@@ -1,151 +1,77 @@
-# What's for Dinner? 🍽️
+# Meal Planner
 
-A calm, personal dinner planner built around a pre-decided **2-week rotation**, so you
-never have to ask _"what should I cook tonight?"_ again.
+A small household meal planner built with Next.js 16, Tailwind CSS, and
+PocketBase. PocketBase serves both the statically exported application and its
+data API.
 
-Built as an installable **PWA** — Next.js 16 + Tailwind v4, backed by **PocketBase**.
-The plan is public and read-only for anyone; log in to edit dishes and categories.
-Bilingual (English + Persian), light & dark mode.
+The public application is read-only. It currently shows the active meal
+rotation and the current week; meal administration is handled outside the
+public frontend.
 
-> Made for one busy user: pick nothing daily, feel calm, and if a night gets skipped —
-> no streaks, no guilt, nothing breaks.
-
----
-
-## Features
-
-- **Today** — the day's category shown as a big "Tonight" card (emoji, English + Persian
-  name, effort badge, notes), followed by the dishes in it. Tap a dish to mark it cooked.
-  Saturdays show _"Eating out"_; Sundays let you pick between kabab and a heavy stew.
-  A small preview shows tomorrow.
-- **Week** — the current Mon–Sun at a glance, today highlighted, weekends softened.
-- **Rotation** — the full 2-week grid plus the rules, with the current week/day marked.
-- **Dishes** — add / edit / delete your own dishes inside each of the 12 categories, with
-  optional notes.
-
----
-
-## Run it
-
-Needs a running PocketBase for data — see below.
+## Development
 
 ```bash
 npm install
 
-# Local dev: point the frontend at a separately-running PocketBase
-curl -Lo /tmp/pb.zip https://github.com/pocketbase/pocketbase/releases/download/v0.39.10/pocketbase_0.39.10_linux_amd64.zip
+curl -Lo /tmp/pb.zip \
+  https://github.com/pocketbase/pocketbase/releases/download/v0.39.10/pocketbase_0.39.10_linux_amd64.zip
 unzip -o /tmp/pb.zip pocketbase -d /tmp/pb
 /tmp/pb/pocketbase serve --http=127.0.0.1:8090 &
-NEXT_PUBLIC_PB_URL=http://127.0.0.1:8090 npm run dev      # http://localhost:3000
+
+NEXT_PUBLIC_PB_URL=http://127.0.0.1:8090 npm run dev
 ```
 
-### Production (single container)
+Run the checks with:
+
+```bash
+npm test
+npm run build
+```
+
+## Production
 
 ```bash
 docker build -t meal-planner .
-MEAL_ASSISTANT_TOKEN="$(openssl rand -hex 32)" # save this in your secret manager
 docker run -p 8090:8090 \
-  -e MEAL_ASSISTANT_TOKEN="$MEAL_ASSISTANT_TOKEN" \
-  -e MEAL_DATA_GITHUB_OWNER=owner \
-  -e MEAL_DATA_GITHUB_REPO=meal-data-repository \
-  -e MEAL_DATA_GITHUB_TOKEN="$MEAL_DATA_GITHUB_TOKEN" \
-  -v meal-planner-pb-data:/pb/pb_data meal-planner
+  -v meal-planner-pb-data:/pb/pb_data \
+  meal-planner
 ```
 
-PocketBase serves both the app and its API from `http://localhost:8090`. On
-first run, create your one login account at `http://localhost:8090/_/`
-(PocketBase's Admin UI) — there's no in-app signup.
+The container builds the Next.js static export, copies it into PocketBase's
+`pb_public` directory, and serves everything on port 8090.
 
-The purpose-built Meal Assistant API is mounted only at `/api/meal-assistant/*`.
-Its narrow `GET /context` read model is public; mutation and photo routes require
-`MEAL_ASSISTANT_TOKEN`. It never uses or returns a PocketBase superuser token. See
-[`docs/meal-assistant-api.md`](./docs/meal-assistant-api.md) for configuration,
-Cloudflare guidance, endpoint examples, and the persisted schema.
+## Meal rotation
 
-When `MEAL_DATA_GITHUB_OWNER` and `MEAL_DATA_GITHUB_REPO` are configured,
-PocketBase synchronizes the repository's `meal-data/` JSON at 06:00
-Europe/Amsterdam each day. Private repositories use an optional read-only
-`MEAL_DATA_GITHUB_TOKEN`; public repositories need no token. A protected
-`POST /api/internal/github-sync` route runs the same idempotent sync on demand.
-The formal JSON Schemas and examples are checked in under [`meal-data/`](./meal-data/).
+The two-week dinner rotation is defined in `app/lib/rotation.ts`:
 
-### Install on your phone
+| | Mon | Tue | Wed | Thu | Fri | Sat | Sun |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Week 1 | International chicken/meat | Bandari & eggs | Fish & shrimp | Layered rice | Pasta | Eat out | Family choice |
+| Week 2 | Pizza | Cold & simple | Salad as a meal | Pastries | Burgers & sushi | Eat out | Family choice |
 
-Open the site in mobile Safari/Chrome → **Share → Add to Home Screen**. It launches
-full-screen like a native app. Categories and dishes load from PocketBase, so it
-needs a network connection; only the cooked-marks and Sunday choice work offline.
+The calendar is anchored to Monday, 1 January 2024, and advances without stored
+weekly state.
 
----
+## Storage
 
-## How the rotation works
+PocketBase migrations create and seed:
 
-The plan is fixed in code (`app/lib/rotation.ts`):
+- meal categories and dishes;
+- household members;
+- dated breakfast, lunch, and dinner assignments;
+- cooked occurrences and protected photos;
+- per-member feedback;
+- meal suggestion history.
 
-|         | Mon                | Tue            | Wed          | Thu               | Fri             | Sat     | Sun          |
-| ------- | ------------------ | -------------- | ------------ | ----------------- | --------------- | ------- | ------------ |
-| **Week 1** | 🍗 Int'l Chicken/Meat | 🍳 Bandari & Eggs | 🐟 Fish & Shrimp | 🍚 Layered Rice/Dami | 🍝 Pasta & Noodles | 🍴 eat out | 🍢 / 🍲 pick |
-| **Week 2** | 🍕 Pizza            | 🌡️ Cold & Simple | 🥗 Salad-as-Meal | 🥟 Pastry/Baked    | 🍔 Burgers & Sushi | 🍴 eat out | 🍢 / 🍲 pick |
-
-Which half you're in is derived from the calendar (anchored to a known Monday), so it
-advances automatically every two weeks. Tuesdays are always quick; Iranian and
-international styles alternate across the week.
-
----
-
-## Design
-
-The **"Sage & Clay"** system: forest-green primary (nav, buttons, cooked state) with a
-warm terracotta/clay accent (the "Tonight" eyebrow, week pill, effort badge), on a warm
-parchment background. Full light & dark themes. Persian text renders right-to-left
-throughout via the Vazirmatn typeface.
-
-Design tokens live in `app/globals.css`. See [`DESIGN_BRIEF.md`](./DESIGN_BRIEF.md) for
-the original brief.
-
----
-
-## Data & storage
-
-- Categories and dishes live in **PocketBase** (`pb_migrations/` seeds the 12
-  categories + their default dishes on first boot). Publicly readable;
-  editing (dishes, category fields) requires being logged in — see the 🔒/🔓
-  control in the bottom nav. No roles, one account.
-- Cooked-marks and the Sunday choice stay in **`localStorage`**
-  (`mp_last_cooked_v1`, `mp_sunday_v1`) — per-device, not shared, not synced.
-- Assistant-created assignments, cooked occurrences, photos, and per-member feedback
-  are persisted in PocketBase. The existing UI's cooked toggle remains local until it
-  is wired to these new records.
-- GitHub meal-data is validated and synchronized into those same collections. Processed
-  commit SHAs are retained so repeated scheduled or manual runs do not duplicate data.
-
----
+The public frontend can read categories and dishes. Meal-domain collections
+remain server-managed.
 
 ## Project structure
 
+```text
+app/             Next.js static application
+pb_hooks/        PocketBase server hooks
+pb_migrations/   PocketBase schema and seed data
+public/          PWA icons and static assets
+test/            integration tests
 ```
-app/
-  page.tsx          Today
-  week/             Week view
-  rotation/         2-week grid
-  dishes/           Dish manager (login-gated editing)
-  lib/              categories · rotation · store (PocketBase) · auth · pb · dishName
-  components/       BottomNav · LoginControl · badges
-  manifest.ts       PWA manifest
-  globals.css       design tokens (light + dark)
-public/             app icons (svg + maskable)
-pb_migrations/      PocketBase schema + seed data
-meal-data/           Draft 2020-12 schemas + example GitHub source documents
-```
-
----
-
-## Tech
-
-Next.js 16 (App Router, static export) · React 19 · TypeScript · Tailwind CSS
-v4 · Vazirmatn font · PocketBase (server + JS SDK) for data and auth.
-
-## Not built yet (post-MVP ideas)
-
-Shopping-list generation, prep reminders/notifications, dish-history sorting, guest mode,
-family preferences, a full FA/EN UI toggle. The PocketBase data layer is ready to build
-these on top of.

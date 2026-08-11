@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import LoginControl from "./LoginControl";
 
 function TodayIcon() {
   return (
@@ -22,29 +21,9 @@ function WeekIcon() {
     </svg>
   );
 }
-function RotationIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      {[8, 16].map((x) =>
-        [8, 16].map((y) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.9" />)
-      )}
-    </svg>
-  );
-}
-function DishesIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="4" y="6" width="16" height="12" rx="3" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M9 12H15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 const TABS = [
   { href: "/", label: "Today", Icon: TodayIcon },
   { href: "/week", label: "Week", Icon: WeekIcon },
-  { href: "/rotation", label: "Rotation", Icon: RotationIcon },
-  { href: "/dishes", label: "Dishes", Icon: DishesIcon },
 ];
 
 export default function BottomNav() {
@@ -76,9 +55,6 @@ export default function BottomNav() {
             </li>
           );
         })}
-        <li className="flex flex-none items-center justify-center pl-1">
-          <LoginControl />
-        </li>
       </ul>
     </nav>
   );

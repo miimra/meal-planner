@@ -194,11 +194,7 @@ function DishList({
       <section>
         <SectionLabel>Cook one of these</SectionLabel>
         <p className="rounded-2xl bg-bg-elevated p-4 text-sm text-ink-faint" style={{ boxShadow: "var(--shadow-sm)" }}>
-          No dishes yet — add your options in the{" "}
-          <Link href="/dishes" className="font-medium text-accent underline underline-offset-2">
-            Dishes
-          </Link>{" "}
-          tab.
+          No dishes have been added for this category yet.
         </p>
       </section>
     );

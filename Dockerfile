@@ -31,7 +31,6 @@ WORKDIR /pb
 COPY --from=builder /app/out ./pb_public
 COPY pb_migrations ./pb_migrations
 COPY pb_hooks ./pb_hooks
-COPY meal-data ./meal-data
 
 EXPOSE 8090
 VOLUME /pb/pb_data
