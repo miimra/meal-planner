@@ -86,6 +86,16 @@ function sendSuggestion(app, destination, suggestion) {
   );
 }
 
+function editSuggestion(app, destination, messageId, suggestion) {
+  const slot = planning.slotValue(app, suggestion.getString("date"), suggestion.getString("meal"));
+  return client.editMessageText(
+    chatId(destination),
+    messageId,
+    views.suggestionText(suggestion, slot),
+    views.suggestionKeyboard(suggestion),
+  );
+}
+
 function sendFeedbackPrompt(app, destination, date, meal) {
   const assignment = planning.assignmentFor(app, date, meal);
   if (!assignment || !assignment.getString("dish")) return null;
@@ -235,7 +245,7 @@ function handleCallback(app, user, destination, query) {
           suggestion.getString("request_text"),
         );
         client.answerCallback(query.id, "New suggestion ready", false);
-        sendSuggestion(app, destination, replacements[0]);
+        editSuggestion(app, destination, query.message.message_id, replacements[0]);
       } catch (error) {
         const failure = friendlyError(error);
         if (!failure) throw error;
@@ -345,6 +355,7 @@ module.exports = {
   handle,
   handlePhoto,
   helpText,
+  editSuggestion,
   sendFeedbackPrompt,
   sendSuggestion,
 };

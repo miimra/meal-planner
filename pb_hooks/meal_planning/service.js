@@ -1,6 +1,7 @@
 "use strict";
 
 const calendar = require(`${__hooks}/meal_planning/calendar.js`);
+const json = require(`${__hooks}/shared/json.js`);
 const openrouter = require(`${__hooks}/openrouter/client.js`);
 const prompt = require(`${__hooks}/openrouter/prompt.js`);
 
@@ -169,8 +170,8 @@ function enrichDishFromSuggestion(dish, suggestion) {
   if (!dish.getString("difficulty")) dish.set("difficulty", suggestion.getString("difficulty"));
   if (!dish.getInt("prep_minutes")) dish.set("prep_minutes", suggestion.getInt("prep_minutes"));
   if (!dish.getInt("cook_minutes")) dish.set("cook_minutes", suggestion.getInt("cook_minutes"));
-  const existingIngredients = dish.get("ingredients");
-  if (!existingIngredients || !existingIngredients.length) dish.set("ingredients", suggestion.get("ingredients"));
+  const existingIngredients = json.arrayField(dish, "ingredients");
+  if (!existingIngredients.length) dish.set("ingredients", json.arrayField(suggestion, "ingredients"));
 }
 
 function upsertAssignment(app, date, meal) {

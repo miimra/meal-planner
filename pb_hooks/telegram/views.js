@@ -1,6 +1,7 @@
 "use strict";
 
 const calendar = require(`${__hooks}/meal_planning/calendar.js`);
+const json = require(`${__hooks}/shared/json.js`);
 
 const LABELS = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner" };
 const ICONS = { breakfast: "☀️", lunch: "🥪", dinner: "🌙" };
@@ -46,8 +47,7 @@ function suggestionText(suggestion, slot) {
   const prep = suggestion.getInt("prep_minutes");
   const cook = suggestion.getInt("cook_minutes");
   const difficulty = suggestion.getString("difficulty");
-  const rawIngredients = suggestion.get("ingredients");
-  const ingredients = Array.isArray(rawIngredients) ? rawIngredients : [];
+  const ingredients = json.arrayField(suggestion, "ingredients");
   const details = [
     "🧑‍🍳 Difficulty: <b>" + escape(difficulty.charAt(0).toUpperCase() + difficulty.slice(1)) + "</b>",
     "⏱ Time: <b>" + (prep + cook) + " min</b> (" + prep + " prep + " + cook + " cooking)",

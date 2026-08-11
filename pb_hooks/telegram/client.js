@@ -30,6 +30,17 @@ function sendMessage(chatId, text, replyMarkup) {
   return request("sendMessage", body);
 }
 
+function editMessageText(chatId, messageId, value, replyMarkup) {
+  const body = {
+    chat_id: String(chatId),
+    message_id: Number(messageId),
+    text: value,
+    parse_mode: "HTML",
+  };
+  if (replyMarkup) body.reply_markup = replyMarkup;
+  return request("editMessageText", body);
+}
+
 function answerCallback(id, text, alert) {
   return request("answerCallbackQuery", {
     callback_query_id: String(id),
@@ -54,4 +65,4 @@ function downloadPhoto(fileId, uniqueId) {
   return $filesystem.fileFromBytes(result.body, "telegram-" + safeName + ".jpg");
 }
 
-module.exports = { answerCallback, config, downloadPhoto, request, sendMessage };
+module.exports = { answerCallback, config, downloadPhoto, editMessageText, request, sendMessage };

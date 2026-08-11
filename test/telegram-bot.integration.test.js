@@ -77,7 +77,7 @@ async function startMockServer() {
       const method = request.url.slice(botPrefix.length);
       telegram.push({ method, body });
       let result = true;
-      if (method === "sendMessage") result = { message_id: ++messageId, chat: { id: body.chat_id } };
+      if (method === "sendMessage" || method === "editMessageText") result = { message_id: method === "sendMessage" ? ++messageId : body.message_id, chat: { id: body.chat_id } };
       if (method === "getFile") result = { file_path: "photos/meal.jpg", file_size: jpeg.length };
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(JSON.stringify({ ok: true, result }));
@@ -285,6 +285,8 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
     assert.match(sent, /Difficulty: <b>Easy<\/b>/);
     assert.match(sent, /30 min/);
     assert.match(sent, /What you need/);
+    assert.match(sent, /500 g main ingredient/);
+    assert.doesNotMatch(sent, /53\n|91\n|44\n/);
   });
 
   const today = amsterdamDate();
@@ -396,12 +398,19 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
     await webhook({ update_id: 51, message: { message_id: 41, from: { id: 111 }, chat: groupChat, text: "/suggest lunch seafood" } });
     const lunch = (await list("meal_suggestions")).find((item) => item.meal === "lunch" && item.outcome === "pending" && item.request_text === "seafood");
     assert.ok(lunch);
+    const sentBefore = mock.telegram.filter((call) => call.method === "sendMessage").length;
     await webhook({
       update_id: 52,
       callback_query: { id: "callback-another", from: { id: 111 }, data: `sg:next:${lunch.id}`, message: { message_id: 42, chat: groupChat } },
     });
     const context = JSON.parse(mock.openrouter.at(-1).messages.find((message) => message.role === "user").content);
     assert.equal(context.preferences.lunch, "seafood");
+    assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sentBefore);
+    const edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
+    assert.ok(edit);
+    assert.equal(edit.body.message_id, 42);
+    assert.match(edit.body.text, /500 g main ingredient/);
+    assert.match(edit.body.reply_markup.inline_keyboard[0][1].callback_data, /^sg:next:/);
   });
 
   await t.test("the website read model is public while private household data stays locked", async () => {
