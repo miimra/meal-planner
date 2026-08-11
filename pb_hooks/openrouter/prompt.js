@@ -1,8 +1,8 @@
 "use strict";
 
-const PROMPT_VERSION = "telegram-v3";
+const PROMPT_VERSION = "telegram-v4";
 
-function messages(context, meals, preferences) {
+function messages(context, meals, preferences, excludedPreferences) {
   return [
     {
       role: "system",
@@ -23,6 +23,7 @@ function messages(context, meals, preferences) {
         "Avoid dishes already assigned in the supplied Monday-Sunday week.",
         "Prefer positively rated dishes, but keep variety.",
         "Follow each meal's user preference only when it is compatible with the family safety rules and dinnerCategory.",
+        "Never use ingredients or food types listed in excludedPreferences.",
         "If the preference names an ingredient or food type, make it a clear part of the dish and ingredients.",
         "If the preference describes effort or time, choose a dish that genuinely matches it.",
         "Never invent an existingDishId. Use null for a newly named dish.",
@@ -38,6 +39,7 @@ function messages(context, meals, preferences) {
       content: JSON.stringify({
         requestedMeals: meals,
         preferences: preferences || {},
+        excludedPreferences: excludedPreferences || {},
         dinnerCategory: context && context.requested && context.requested.dinner
           ? context.requested.dinner.category || null
           : null,

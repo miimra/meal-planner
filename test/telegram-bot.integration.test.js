@@ -269,7 +269,8 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
 
   const today = amsterdamDate();
   const tomorrow = addDays(today, 1);
-  const suggestionCategory = (await list("categories"))[0];
+  const suggestionCategory = (await list("categories")).find((category) => category.catId === 5);
+  assert.ok(suggestionCategory);
   await create("meal_assignments", {
     date: tomorrow,
     meal: "dinner",
@@ -294,6 +295,7 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
     assert.equal(suggestion.model, "test/model");
     const request = JSON.parse(mock.openrouter[0].messages.find((message) => message.role === "user").content);
     assert.equal(request.preferences.dinner, "very easy meat");
+    assert.deepEqual(request.excludedPreferences, {});
     assert.deepEqual(request.dinnerCategory, request.context.requested.dinner.category);
     const systemPrompt = mock.openrouter[0].messages.find((message) => message.role === "system").content;
     assert.match(systemPrompt, /two adults and one baby/);
@@ -337,6 +339,18 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
     assert.deepEqual(acceptedDish.ingredients, ["500 g main ingredient", "1 onion", "2 tbsp olive oil"]);
     assert.ok(assignments.find((item) => item.date === tomorrow && item.meal === "lunch" && item.status === "buy_food" && !item.dish));
     assert.ok(assignments.find((item) => item.date === tomorrow && item.meal === "breakfast" && item.status === "eating_out" && !item.dish));
+  });
+
+  await t.test("an incompatible dinner request is excluded because category wins", async () => {
+    await webhook({ update_id: 53, message: { message_id: 43, from: { id: 111 }, chat: groupChat, text: "/suggest dinner seafood" } });
+    const request = JSON.parse(mock.openrouter.at(-1).messages.find((message) => message.role === "user").content);
+    assert.deepEqual(request.preferences, {});
+    assert.equal(request.excludedPreferences.dinner, "seafood");
+    const replacement = (await list("meal_suggestions")).find((item) => item.meal === "dinner" && item.outcome === "pending");
+    assert.equal(replacement.request_text, "seafood");
+    assert.equal(replacement.request_status, "ignored_category");
+    const sent = mock.telegram.filter((call) => call.method === "sendMessage").at(-1).body.text;
+    assert.match(sent, /not applied; main category wins/);
   });
 
   await t.test("last meal replaces the current slot without confirmation", async () => {

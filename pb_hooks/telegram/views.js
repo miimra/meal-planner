@@ -46,6 +46,7 @@ function suggestionText(suggestion, slot) {
     : "";
   const current = slot.dish ? "\nCurrently: " + escape(slot.dish.name) : "";
   const request = suggestion.getString("request_text");
+  const requestStatus = suggestion.getString("request_status");
   const prep = suggestion.getInt("prep_minutes");
   const cook = suggestion.getInt("cook_minutes");
   const difficulty = suggestion.getString("difficulty");
@@ -58,7 +59,11 @@ function suggestionText(suggestion, slot) {
     "⏱ Time: <b>" + (prep + cook) + " min</b> (" + prep + " prep + " + cook + " cooking)",
   ];
   if (babyNotes) details.push("👶 Baby serving: " + escape(babyNotes));
-  if (request) details.unshift("🎯 Requested: <b>" + escape(request) + "</b>");
+  if (request) {
+    details.unshift(requestStatus === "ignored_category"
+      ? "🎯 Requested: <b>" + escape(request) + "</b> · <i>not applied; main category wins</i>"
+      : "🎯 Requested: <b>" + escape(request) + "</b>");
+  }
   if (ingredients.length) {
     details.push("\n🛒 <b>What you need</b>");
     for (const ingredient of ingredients) details.push("• " + escape(ingredient));

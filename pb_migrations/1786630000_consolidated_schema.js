@@ -2003,6 +2003,21 @@ migrate((app) => {
           ]
         },
         {
+          "autogeneratePattern": "",
+          "help": "",
+          "hidden": false,
+          "id": "text1448357918",
+          "max": 40,
+          "min": 0,
+          "name": "request_status",
+          "pattern": "",
+          "presentable": false,
+          "primaryKey": false,
+          "required": false,
+          "system": false,
+          "type": "text"
+        },
+        {
           "help": "",
           "hidden": false,
           "id": "number1448357914",

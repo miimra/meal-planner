@@ -3,6 +3,7 @@
 const calendar = require(`${__hooks}/meal_planning/calendar.js`);
 const json = require(`${__hooks}/shared/json.js`);
 const openrouter = require(`${__hooks}/openrouter/client.js`);
+const preference = require(`${__hooks}/meal_planning/preference.js`);
 const prompt = require(`${__hooks}/openrouter/prompt.js`);
 
 function first(app, collection, filter, params, sort) {
@@ -122,11 +123,34 @@ function generateSuggestions(app, targetDate, meals, requestText) {
   calendar.parseDate(targetDate);
   const requestedMeals = meals.map(calendar.assertMeal);
   const request = String(requestText || "").trim().slice(0, 200);
+  const context = aiContext(app, targetDate, requestedMeals);
   const preferences = {};
-  if (request) {
-    for (const meal of requestedMeals) preferences[meal] = request;
+  const excludedPreferences = {};
+  const requestStatus = {};
+  for (const meal of requestedMeals) {
+    if (!request) continue;
+    const category = context.requested[meal] && context.requested[meal].category;
+    if (meal === "dinner" && category && !preference.matchesDinnerCategory(request, category, context.dishes)) {
+      excludedPreferences[meal] = request;
+      requestStatus[meal] = "ignored_category";
+    } else {
+      preferences[meal] = request;
+      requestStatus[meal] = "applied";
+    }
   }
-  const generated = openrouter.generate(aiContext(app, targetDate, requestedMeals), requestedMeals, preferences);
+  let generated = openrouter.generate(context, requestedMeals, preferences, excludedPreferences);
+  let excludedFound = generated.meals.some((item) => (
+    excludedPreferences[item.meal]
+    && preference.outputContainsRequest(item, excludedPreferences[item.meal])
+  ));
+  if (excludedFound) {
+    generated = openrouter.generate(context, requestedMeals, preferences, excludedPreferences);
+    excludedFound = generated.meals.some((item) => (
+      excludedPreferences[item.meal]
+      && preference.outputContainsRequest(item, excludedPreferences[item.meal])
+    ));
+    if (excludedFound) throw new Error("invalid_ai_response");
+  }
   const stored = [];
   app.runInTransaction((tx) => {
     for (const item of generated.meals) {
@@ -153,6 +177,7 @@ function generateSuggestions(app, targetDate, meals, requestText) {
       record.set("outcome", "pending");
       record.set("reason", item.reason);
       record.set("request_text", request);
+      record.set("request_status", requestStatus[item.meal] || "");
       record.set("difficulty", item.difficulty);
       record.set("prep_minutes", item.prepMinutes);
       record.set("cook_minutes", item.cookMinutes);
