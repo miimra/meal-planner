@@ -37,7 +37,7 @@ function request(context, meals, preferences, excludedPreferences) {
   if (result.statusCode < 200 || result.statusCode >= 300) throw new Error("openrouter_request_failed");
   const choice = result.json && result.json.choices && result.json.choices[0];
   const content = choice && choice.message ? choice.message.content : null;
-  return { meals: response.validateResponse(content, meals), model: cfg.model };
+  return { meals: response.validateResponse(content, meals, context.servings), model: cfg.model };
 }
 
 function generate(context, meals, preferences, excludedPreferences) {

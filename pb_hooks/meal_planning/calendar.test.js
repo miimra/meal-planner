@@ -20,3 +20,12 @@ test("dinner rotation preserves weekday, Saturday, and Sunday semantics", () => 
   assert.equal(calendar.dinnerRotation("2026-08-15").kind, "eat_out");
   assert.deepEqual(calendar.dinnerRotation("2026-08-16").catIds, [2, 3]);
 });
+
+test("weekday lunch serves two adults while weekend lunch includes the baby", () => {
+  assert.deepEqual(calendar.servingProfile("2026-08-12", "lunch"), {
+    adults: 2, babies: 0, includesBaby: false, label: "2 adults",
+  });
+  assert.equal(calendar.servingProfile("2026-08-15", "lunch").label, "2 adults + 1 baby");
+  assert.equal(calendar.servingProfile("2026-08-12", "breakfast").includesBaby, true);
+  assert.equal(calendar.servingProfile("2026-08-12", "dinner").includesBaby, true);
+});

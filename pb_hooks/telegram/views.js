@@ -52,9 +52,12 @@ function suggestionText(suggestion, slot) {
   const difficulty = suggestion.getString("difficulty");
   const babyNotes = suggestion.getString("baby_notes");
   const ingredients = json.arrayField(suggestion, "ingredients");
+  const serving = calendar.servingProfile(suggestion.getString("date"), slot.meal);
   const details = [
-    "👨‍👩‍👶 Serves: <b>2 adults + 1 baby</b>",
-    "🥦 <b>Baby-safe · no spicy heat · extra vegetables · low salt &amp; sugar</b>",
+    (serving.includesBaby ? "👨‍👩‍👶" : "👥") + " Serves: <b>" + escape(serving.label) + "</b>",
+    serving.includesBaby
+      ? "🥦 <b>Baby-safe · no spicy heat · extra vegetables · low salt &amp; sugar</b>"
+      : "🥦 <b>No spicy heat · extra vegetables · low salt &amp; sugar</b>",
     "🧑‍🍳 Difficulty: <b>" + escape(difficulty.charAt(0).toUpperCase() + difficulty.slice(1)) + "</b>",
     "⏱ Time: <b>" + (prep + cook) + " min</b> (" + prep + " prep + " + cook + " cooking)",
   ];

@@ -98,9 +98,10 @@ specific direction; the **Another** button keeps the same constraint:
 /suggest lunch very easy
 ```
 
-Every generated meal is sized for two adults and one baby. Suggestions are
-vegetable-forward, non-spicy, low in added salt and sugar, and include a
-dish-specific instruction for preparing the baby's portion safely.
+Breakfast, dinner, and weekend lunch are sized for two adults and one baby.
+Weekday lunch is sized for two adults because the baby is not present.
+Suggestions are vegetable-forward, non-spicy, low in added salt and sugar,
+and include a dish-specific baby instruction only when the baby is eating.
 Breakfast and lunch are always very simple (easy, at most 20 minutes, and no
 more than eight ingredients). Dinner's visible rotation category is the main
 planning constraint and takes priority over incompatible free-form requests.

@@ -50,4 +50,14 @@ function assertMeal(value) {
   return value;
 }
 
-module.exports = { MEALS, addDays, assertMeal, dateKey, dinnerRotation, parseDate, weekBounds };
+function servingProfile(value, meal) {
+  const date = typeof value === "string" ? parseDate(value) : value;
+  assertMeal(meal);
+  const day = date.getUTCDay();
+  if (meal === "lunch" && day >= 1 && day <= 5) {
+    return { adults: 2, babies: 0, includesBaby: false, label: "2 adults" };
+  }
+  return { adults: 2, babies: 1, includesBaby: true, label: "2 adults + 1 baby" };
+}
+
+module.exports = { MEALS, addDays, assertMeal, dateKey, dinnerRotation, parseDate, servingProfile, weekBounds };

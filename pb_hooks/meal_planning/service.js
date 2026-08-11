@@ -115,8 +115,12 @@ function aiContext(app, targetDate, meals) {
     { date: targetDate },
   ).map((item) => ({ meal: item.getString("meal"), name: item.getString("suggested_name") }));
   const requested = {};
-  for (const meal of meals) requested[meal] = slotValue(app, targetDate, meal);
-  return { targetDate, requested, week, dishes, feedback, preferences, rejected };
+  const servings = {};
+  for (const meal of meals) {
+    requested[meal] = slotValue(app, targetDate, meal);
+    servings[meal] = calendar.servingProfile(targetDate, meal);
+  }
+  return { targetDate, requested, servings, week, dishes, feedback, preferences, rejected };
 }
 
 function generateSuggestions(app, targetDate, meals, requestText) {
@@ -182,7 +186,7 @@ function generateSuggestions(app, targetDate, meals, requestText) {
       record.set("prep_minutes", item.prepMinutes);
       record.set("cook_minutes", item.cookMinutes);
       record.set("ingredients", item.ingredients);
-      record.set("baby_notes", item.babyServing);
+      record.set("baby_notes", item.babyServing || "");
       record.set("model", generated.model);
       record.set("prompt_version", prompt.PROMPT_VERSION);
       tx.save(record);

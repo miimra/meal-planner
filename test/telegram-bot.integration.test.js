@@ -65,7 +65,9 @@ async function startMockServer() {
         prepMinutes: meal === "dinner" ? 10 : 5,
         cookMinutes: meal === "dinner" ? 20 : 10,
         ingredients: ["500 g main ingredient", "1 onion", "2 tbsp olive oil"],
-        babyServing: "Set aside before seasoning, cook fully, and mash to a soft texture.",
+        babyServing: user.servings[meal].includesBaby
+          ? "Set aside before seasoning, cook fully, and mash to a soft texture."
+          : null,
         existingDishId: null,
       }));
       response.writeHead(200, { "Content-Type": "application/json" });
@@ -298,7 +300,7 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
     assert.deepEqual(request.excludedPreferences, {});
     assert.deepEqual(request.dinnerCategory, request.context.requested.dinner.category);
     const systemPrompt = mock.openrouter[0].messages.find((message) => message.role === "system").content;
-    assert.match(systemPrompt, /two adults and one baby/);
+    assert.match(systemPrompt, /exact per-meal serving profile/);
     assert.match(systemPrompt, /no chili or spicy heat/i);
     assert.match(systemPrompt, /vegetable-forward/);
     assert.match(systemPrompt, /little added salt and sugar/);
@@ -433,6 +435,15 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
 
   await t.test("Another keeps the original custom preference", async () => {
     await webhook({ update_id: 51, message: { message_id: 41, from: { id: 111 }, chat: groupChat, text: "/suggest lunch seafood" } });
+    const lunchCard = mock.telegram.filter((call) => call.method === "sendMessage").at(-1).body.text;
+    const targetDay = new Date(tomorrow + "T12:00:00Z").getUTCDay();
+    if (targetDay >= 1 && targetDay <= 5) {
+      assert.match(lunchCard, /Serves: <b>2 adults<\/b>/);
+      assert.doesNotMatch(lunchCard, /1 baby|Baby serving:/);
+    } else {
+      assert.match(lunchCard, /2 adults \+ 1 baby/);
+      assert.match(lunchCard, /Baby serving:/);
+    }
     const lunch = (await list("meal_suggestions")).find((item) => item.meal === "lunch" && item.outcome === "pending" && item.request_text === "seafood");
     assert.ok(lunch);
     const sentBefore = mock.telegram.filter((call) => call.method === "sendMessage").length;
@@ -442,6 +453,9 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
     });
     const context = JSON.parse(mock.openrouter.at(-1).messages.find((message) => message.role === "user").content);
     assert.equal(context.preferences.lunch, "seafood");
+    assert.deepEqual(context.servings.lunch, targetDay >= 1 && targetDay <= 5
+      ? { adults: 2, babies: 0, includesBaby: false, label: "2 adults" }
+      : { adults: 2, babies: 1, includesBaby: true, label: "2 adults + 1 baby" });
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sentBefore);
     const edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
     assert.ok(edit);

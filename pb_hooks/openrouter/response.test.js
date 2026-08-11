@@ -30,3 +30,20 @@ test("OpenRouter response validator rejects missing, duplicate, and malformed me
   ] }, ["lunch"]), /invalid_ai_response/);
   assert.throws(() => response.contentJson("not json"), /invalid_ai_response/);
 });
+
+test("weekday adult-only lunch requires no baby serving instruction", () => {
+  const meal = {
+    meal: "lunch",
+    name: "Vegetable wrap",
+    reason: "Simple and vegetable-forward.",
+    difficulty: "easy",
+    prepMinutes: 10,
+    cookMinutes: 0,
+    ingredients: ["2 wraps", "200 g vegetables"],
+    babyServing: null,
+    existingDishId: null,
+  };
+  const servings = { lunch: { adults: 2, babies: 0, includesBaby: false, label: "2 adults" } };
+  assert.equal(response.validateResponse({ meals: [meal] }, ["lunch"], servings)[0].babyServing, null);
+  assert.throws(() => response.validateResponse({ meals: [{ ...meal, babyServing: "Not needed" }] }, ["lunch"], servings), /invalid_ai_response/);
+});

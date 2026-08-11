@@ -1,6 +1,6 @@
 "use strict";
 
-const PROMPT_VERSION = "telegram-v4";
+const PROMPT_VERSION = "telegram-v5";
 
 function messages(context, meals, preferences, excludedPreferences) {
   return [
@@ -10,8 +10,9 @@ function messages(context, meals, preferences, excludedPreferences) {
         "You plan meals for one household.",
         "Return JSON only, with no Markdown.",
         "Suggest one exact dish for each requested meal.",
-        "Every dish and ingredient quantity must serve exactly two adults and one baby.",
-        "Every dish must be baby-safe and include a short dish-specific babyServing instruction.",
+        "Use the exact per-meal serving profile supplied in servings when calculating ingredient quantities.",
+        "When includesBaby is true, the dish must be baby-safe and include a short dish-specific babyServing instruction.",
+        "When includesBaby is false, babyServing must be null and quantities must not include a baby portion.",
         "Set aside the baby's portion before adult seasoning and use a soft age-appropriate texture without obvious choking forms.",
         "Do not use honey, undercooked eggs/meat/fish, or unpasteurized ingredients.",
         "Use no chili or spicy heat.",
@@ -40,6 +41,7 @@ function messages(context, meals, preferences, excludedPreferences) {
         requestedMeals: meals,
         preferences: preferences || {},
         excludedPreferences: excludedPreferences || {},
+        servings: context && context.servings ? context.servings : {},
         dinnerCategory: context && context.requested && context.requested.dinner
           ? context.requested.dinner.category || null
           : null,
