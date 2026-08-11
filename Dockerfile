@@ -21,7 +21,7 @@ RUN case "$(uname -m)" in \
       armv7l)  PB_ARCH=armv7 ;; \
       *) echo "Unsupported uname -m: $(uname -m)" >&2; exit 1 ;; \
     esac \
-  && apk add --no-cache ca-certificates unzip curl \
+  && apk add --no-cache ca-certificates tzdata unzip curl \
   && curl -Lo /tmp/pb.zip "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_${PB_ARCH}.zip" \
   && unzip /tmp/pb.zip pocketbase -d /pb \
   && rm /tmp/pb.zip \
@@ -31,6 +31,7 @@ WORKDIR /pb
 COPY --from=builder /app/out ./pb_public
 COPY pb_migrations ./pb_migrations
 COPY pb_hooks ./pb_hooks
+COPY meal-data ./meal-data
 
 EXPOSE 8090
 VOLUME /pb/pb_data

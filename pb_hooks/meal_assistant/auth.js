@@ -24,4 +24,12 @@ function middleware(e) {
   return e.next();
 }
 
-module.exports = { bearerToken, middleware };
+function userOrAssistantMiddleware(e) {
+  if (e.auth && e.auth.collection().name === "users") {
+    return e.next();
+  }
+
+  return middleware(e);
+}
+
+module.exports = { bearerToken, middleware, userOrAssistantMiddleware };

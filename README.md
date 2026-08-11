@@ -46,6 +46,9 @@ docker build -t meal-planner .
 MEAL_ASSISTANT_TOKEN="$(openssl rand -hex 32)" # save this in your secret manager
 docker run -p 8090:8090 \
   -e MEAL_ASSISTANT_TOKEN="$MEAL_ASSISTANT_TOKEN" \
+  -e MEAL_DATA_GITHUB_OWNER=owner \
+  -e MEAL_DATA_GITHUB_REPO=meal-data-repository \
+  -e MEAL_DATA_GITHUB_TOKEN="$MEAL_DATA_GITHUB_TOKEN" \
   -v meal-planner-pb-data:/pb/pb_data meal-planner
 ```
 
@@ -58,6 +61,13 @@ The optional purpose-built Meal Assistant API is mounted only at
 It never uses or returns a PocketBase superuser token. See
 [`docs/meal-assistant-api.md`](./docs/meal-assistant-api.md) for configuration,
 Cloudflare guidance, endpoint examples, and the persisted schema.
+
+When `MEAL_DATA_GITHUB_OWNER` and `MEAL_DATA_GITHUB_REPO` are configured,
+PocketBase synchronizes the repository's `meal-data/` JSON at 06:00
+Europe/Amsterdam each day. Private repositories use an optional read-only
+`MEAL_DATA_GITHUB_TOKEN`; public repositories need no token. A protected
+`POST /api/internal/github-sync` route runs the same idempotent sync on demand.
+The formal JSON Schemas and examples are checked in under [`meal-data/`](./meal-data/).
 
 ### Install on your phone
 
@@ -105,6 +115,8 @@ the original brief.
 - Assistant-created assignments, cooked occurrences, photos, and per-member feedback
   are persisted in PocketBase. The existing UI's cooked toggle remains local until it
   is wired to these new records.
+- GitHub meal-data is validated and synchronized into those same collections. Processed
+  commit SHAs are retained so repeated scheduled or manual runs do not duplicate data.
 
 ---
 
@@ -122,6 +134,7 @@ app/
   globals.css       design tokens (light + dark)
 public/             app icons (svg + maskable)
 pb_migrations/      PocketBase schema + seed data
+meal-data/           Draft 2020-12 schemas + example GitHub source documents
 ```
 
 ---

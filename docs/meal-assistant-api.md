@@ -41,6 +41,105 @@ BASE_URL=https://meals.example.com
 TOKEN="$MEAL_ASSISTANT_TOKEN"
 ```
 
+## GitHub meal-data synchronization
+
+PocketBase can mirror the configured GitHub repository's `meal-data/` tree into
+the existing meal-assistant collections. GitHub is authoritative only for fields
+represented by those documents; unrelated PocketBase fields and uploaded image
+binaries are preserved.
+
+Configure the repository in the PocketBase process environment:
+
+```bash
+export MEAL_DATA_GITHUB_OWNER=owner
+export MEAL_DATA_GITHUB_REPO=repository
+export MEAL_DATA_GITHUB_BRANCH=master
+export MEAL_DATA_GITHUB_ROOT=meal-data
+```
+
+Public repositories need no GitHub credential. For a private repository, create a
+fine-grained token restricted to that repository with only **Contents: read** and
+set one of the following variables. The dedicated name takes precedence:
+
+```bash
+export MEAL_DATA_GITHUB_TOKEN=github_pat_REDACTED
+# GITHUB_TOKEN is also accepted as a fallback.
+```
+
+Optional scheduling settings are:
+
+```bash
+export MEAL_DATA_SYNC_CRON="0 6 * * *"
+export MEAL_DATA_SYNC_TIMEZONE=Europe/Amsterdam
+```
+
+The defaults above run once per day at 06:00 Amsterdam time, including daylight
+saving transitions. The cron is registered as `github-meal-data-sync` and can also
+be inspected or run by a superuser from PocketBase Dashboard > Settings > Crons.
+
+The production container includes `tzdata` and the checked-in schemas under
+`meal-data/schema/`. `MEAL_DATA_GITHUB_API_URL` may override `https://api.github.com`
+for GitHub Enterprise or local integration testing.
+
+### Manual sync
+
+Logged-in household users can open the unlocked account menu in the application's
+bottom navigation and select **Synchronize meals**. The browser sends the current
+PocketBase `users` auth token; the internal assistant token is never sent to or
+stored by the frontend.
+
+The same operation can be requested by backend automation through the existing
+bearer-protected route:
+
+```bash
+curl --fail-with-body -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  "$BASE_URL/api/internal/github-sync"
+```
+
+The route accepts either a valid PocketBase `users` token or the configured
+`MEAL_ASSISTANT_TOKEN`. No request body is needed. A new commit returns a summary
+such as:
+
+```json
+{
+  "status": "completed",
+  "trigger": "manual",
+  "repository": "owner/repository",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "summary": {
+    "recipesUpserted": 2,
+    "daysUpserted": 1,
+    "feedbackUpserted": 2
+  }
+}
+```
+
+An already processed commit returns `status: "unchanged"`. Validation and mapping
+failures return `400`; GitHub and configuration failures return a server error. The
+commit is recorded only after the data transaction succeeds.
+
+### Import behavior
+
+- The latest configured branch commit is compared with the most recently processed
+  commit; initial and force-push recovery runs scan the complete repository tree.
+- Only recognized `household.json`, `recipes/*.json`, and dated `days/**/day.json`
+  files below the configured root are imported. Schema and unrelated files are skipped.
+- All fetched documents are validated before persistence. Recipe filename IDs and day
+  folder dates must agree with their document values.
+- Household members, recipes, three daily meal slots, suggestions, cooked occurrences,
+  and feedback are upserted by their stable source or natural keys.
+- Every successful commit SHA is retained in the locked `github_sync_commits`
+  collection, making retries idempotent.
+- Source-file deletion is deliberately non-destructive: it is logged and recorded in
+  the commit metadata, but existing recipes and historical meal/feedback records are
+  not hard-deleted. Explicit fields in documents continue to update normally.
+- GitHub photo objects populate URL metadata fields only. Existing PocketBase file
+  uploads remain untouched.
+
+Formal Draft 2020-12 schemas and working examples live in the checked-in
+[`meal-data`](../meal-data/) directory.
+
 ## Context
 
 `date` is the target planning date (normally tomorrow). Consequently `today` is the
@@ -216,12 +315,18 @@ It adds locked collections for `household_members`, `dish_reference_photos`,
 seeded as active members. Additional members and preference notes can be managed from
 the private PocketBase Admin UI.
 
+The GitHub sync migration extends those collections with stable external IDs and
+source metadata. It also adds locked `household_settings` and
+`github_sync_commits` collections. `meal_assignments` represents the natural
+`date + meal` slot, so unplanned, skipped, and eating-out slots do not require a dish.
+
 ## Cloudflare
 
 No broad `/api/*` bypass is needed. Keep the existing public block for `/_/` exactly as
-it is. If a Cloudflare rule currently blocks all unknown paths, add only
-`/api/meal-assistant/*` to the origin allowlist and permit `GET` and `POST` with request
-bodies up to 25 MiB. Forward the `Authorization` header and multipart bodies unchanged.
+it is. If a Cloudflare rule currently blocks all unknown paths, add
+`/api/meal-assistant/*` plus the exact `/api/internal/github-sync` path to the origin
+allowlist. Permit `GET` and `POST` with request bodies up to 25 MiB. Forward the
+`Authorization` header and multipart bodies unchanged.
 
 Cloudflare's allow rule is not authentication: PocketBase still validates the bearer
 token on every assistant route. Do not cache context or mutation responses, and redact

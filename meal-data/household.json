@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "members": [
+    { "id": "amir", "name": "Amir", "active": true },
+    { "id": "maryam", "name": "Maryam", "active": true }
+  ],
+  "preferences": {
+    "spicy": false,
+    "salt": "moderate",
+    "sugar": "moderate"
+  }
+}

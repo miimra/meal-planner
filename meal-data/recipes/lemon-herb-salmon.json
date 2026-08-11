@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "lemon-herb-salmon",
+  "name": "Lemon Herb Salmon",
+  "description": "Oven-baked salmon with lemon, garlic and fresh herbs.",
+  "categories": ["fish", "dinner"],
+  "cuisine": "Mediterranean",
+  "servings": 3,
+  "prepMinutes": 10,
+  "cookMinutes": 18,
+  "ingredients": [
+    { "name": "salmon fillet", "quantity": 500, "unit": "g", "notes": null },
+    { "name": "lemon", "quantity": 1, "unit": "piece", "notes": null }
+  ],
+  "steps": [
+    { "order": 1, "instruction": "Heat the oven to 200°C." },
+    { "order": 2, "instruction": "Season the salmon lightly and add lemon and herbs." }
+  ],
+  "referencePhoto": null,
+  "createdAt": "2026-08-11T18:30:00+02:00",
+  "updatedAt": "2026-08-11T18:30:00+02:00"
+}

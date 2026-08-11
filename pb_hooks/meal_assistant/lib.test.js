@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const lib = require("./lib.js");
-const { bearerToken } = require("./auth.js");
+const { bearerToken, userOrAssistantMiddleware } = require("./auth.js");
 
 test("weekBounds is strictly Monday through Sunday at a Monday boundary", () => {
   assert.deepEqual(lib.weekBounds("2026-08-10"), {
@@ -47,4 +47,18 @@ test("bearerToken parses only the Bearer authorization scheme", () => {
   assert.equal(bearerToken("Bearer abc123"), "abc123");
   assert.equal(bearerToken("Basic abc123"), "");
   assert.equal(bearerToken(undefined), "");
+});
+
+test("GitHub sync middleware accepts authenticated users", () => {
+  let continued = false;
+  const result = userOrAssistantMiddleware({
+    auth: { collection: () => ({ name: "users" }) },
+    next() {
+      continued = true;
+      return "next";
+    },
+  });
+
+  assert.equal(result, "next");
+  assert.equal(continued, true);
 });

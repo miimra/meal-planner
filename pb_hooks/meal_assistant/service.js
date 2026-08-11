@@ -75,14 +75,19 @@ function dishJson(app, dish) {
   const referencePhoto = referenceRecord ? referenceRecord.getString("photo") : "";
   return {
     id: dish.id,
+    githubRecipeId: dish.getString("github_recipe_id") || null,
     name: dish.getString("name"),
+    description: dish.getString("description") || null,
+    servings: dish.getFloat("servings") || null,
     legacyCategoryId: dish.getInt("catId") || null,
     categories: categoriesForDish(app, dish),
+    sourceCategories: jsonField(dish, "source_categories", []),
     recipe: {
       ingredients: jsonField(dish, "ingredients", []),
       instructions: jsonField(dish, "instructions", []),
       prepMinutes: dish.getInt("prep_minutes") || 0,
       cookMinutes: dish.getInt("cook_minutes") || 0,
+      sourceSteps: jsonField(dish, "source_steps", []),
     },
     difficulty: dish.getString("difficulty") || null,
     cuisine: dish.getString("cuisine") || null,
@@ -92,6 +97,7 @@ function dishJson(app, dish) {
       filename: referencePhoto,
       url: fileUrl(referenceRecord, referencePhoto),
     } : null,
+    sourceReferencePhoto: jsonField(dish, "reference_photo_metadata", null),
     created: dish.getString("created") || null,
     updated: dish.getString("updated") || null,
   };
@@ -105,6 +111,9 @@ function assignmentJson(app, record) {
     id: record.id,
     date: record.getString("date"),
     meal: record.getString("meal"),
+    status: record.getString("status") || null,
+    sourceCategory: record.getString("source_category") || null,
+    plannedRecipeId: record.getString("planned_recipe_id") || null,
     category: categoryJson(category),
     dish: dishJson(app, dish),
     notes: record.getString("notes") || null,
@@ -123,9 +132,12 @@ function occurrenceJson(app, record) {
     id: record.id,
     date: record.getString("date"),
     meal: record.getString("meal"),
+    cookedAt: record.getString("cooked_at") || null,
+    sourceRecipeId: record.getString("source_recipe_id") || null,
     assignmentId: record.getString("assignment") || null,
     dish: dishJson(app, optionalRecordById(app, "dishes", record.getString("dish"))),
     photos,
+    sourcePhotos: jsonField(record, "source_photos", []),
     modifications: record.getString("modifications") || null,
     notes: record.getString("notes") || null,
     created: record.getString("created"),
@@ -137,6 +149,7 @@ function memberJson(record) {
   if (!record) return null;
   return {
     id: record.id,
+    externalId: record.getString("external_id") || null,
     name: record.getString("name"),
     active: record.getBool("active"),
     preferenceNotes: record.getString("preference_notes") || null,
@@ -147,12 +160,14 @@ function feedbackJson(app, record) {
   if (!record) return null;
   return {
     id: record.id,
+    externalId: record.getString("external_id") || null,
     occurrenceId: record.getString("occurrence"),
     dish: dishJson(app, optionalRecordById(app, "dishes", record.getString("dish"))),
     member: memberJson(optionalRecordById(app, "household_members", record.getString("member"))),
     rating: record.getString("rating"),
     makeAgain: record.getString("make_again"),
     changes: record.getString("changes") || null,
+    sourceCreatedAt: record.getString("source_created_at") || null,
     created: record.getString("created"),
     updated: record.getString("updated"),
   };
@@ -161,11 +176,14 @@ function feedbackJson(app, record) {
 function suggestionJson(app, record) {
   return {
     id: record.id,
+    externalId: record.getString("external_id") || null,
     date: record.getString("date"),
     meal: record.getString("meal"),
     dish: dishJson(app, optionalRecordById(app, "dishes", record.getString("dish"))),
     suggestedName: record.getString("suggested_name") || null,
     outcome: record.getString("outcome"),
+    suggestedAt: record.getString("suggested_at") || null,
+    decidedAt: record.getString("decided_at") || null,
     rejectionReason: record.getString("rejection_reason") || null,
     member: memberJson(optionalRecordById(app, "household_members", record.getString("member"))),
     created: record.getString("created"),
@@ -237,7 +255,7 @@ function context(e) {
   );
   const occurrences = e.app.findRecordsByFilter(
     "cooked_occurrences",
-    "date >= {:from} && date <= {:to}",
+    "date >= {:from} && date <= {:to} && (github_managed = false || source_present = true)",
     "date,meal",
     0,
     0,
@@ -288,7 +306,13 @@ function context(e) {
     if (dish) usedDishes.push(dishJson(e.app, dish));
   }
 
-  const recentOccurrenceRecords = e.app.findRecordsByFilter("cooked_occurrences", "", "-date,-created", 30, 0);
+  const recentOccurrenceRecords = e.app.findRecordsByFilter(
+    "cooked_occurrences",
+    "github_managed = false || source_present = true",
+    "-date,-created",
+    30,
+    0,
+  );
   const recentDishes = [];
   for (const occurrence of recentOccurrenceRecords) {
     recentDishes.push({
@@ -299,6 +323,11 @@ function context(e) {
   }
 
   const members = e.app.findRecordsByFilter("household_members", "active = true", "name", 0, 0);
+  const householdSettings = firstByFilter(
+    e.app,
+    "household_settings",
+    "source_key = 'github'",
+  );
   const suggestionRecords = e.app.findRecordsByFilter("meal_suggestions", "", "-created", 50, 0);
   const weekDays = [];
   for (let i = 0; i < 7; i += 1) weekDays.push(daysByDate[lib.addDays(bounds.start, i)]);
@@ -318,6 +347,9 @@ function context(e) {
     recentFeedback: feedbackRecords.map((record) => feedbackJson(e.app, record)),
     recentSuggestions: suggestionRecords.map((record) => suggestionJson(e.app, record)),
     householdMembers: members.map(memberJson),
+    householdPreferences: householdSettings
+      ? jsonField(householdSettings, "preferences", {})
+      : null,
   });
 }
 
@@ -518,9 +550,7 @@ function ensureOccurrence(app, date, meal, dishId, updates) {
     "date = {:date} && meal = {:meal}",
     { date, meal },
   );
-  if (assignment && assignment.getString("dish") !== dishId) {
-    throw new ApiError(409, "dishId does not match the assigned dish for this meal.");
-  }
+  // The actually cooked recipe may legitimately differ from the planned one.
   if (!optionalRecordById(app, "dishes", dishId)) throw new NotFoundError("Dish not found.");
   if (!occurrence) {
     occurrence = new Record(app.findCollectionByNameOrId("cooked_occurrences"));
