@@ -43,12 +43,21 @@ NEXT_PUBLIC_PB_URL=http://127.0.0.1:8090 npm run dev      # http://localhost:300
 
 ```bash
 docker build -t meal-planner .
-docker run -p 8090:8090 -v meal-planner-pb-data:/pb/pb_data meal-planner
+MEAL_ASSISTANT_TOKEN="$(openssl rand -hex 32)" # save this in your secret manager
+docker run -p 8090:8090 \
+  -e MEAL_ASSISTANT_TOKEN="$MEAL_ASSISTANT_TOKEN" \
+  -v meal-planner-pb-data:/pb/pb_data meal-planner
 ```
 
 PocketBase serves both the app and its API from `http://localhost:8090`. On
 first run, create your one login account at `http://localhost:8090/_/`
 (PocketBase's Admin UI) — there's no in-app signup.
+
+The optional purpose-built Meal Assistant API is mounted only at
+`/api/meal-assistant/*` and requires `MEAL_ASSISTANT_TOKEN` on every request.
+It never uses or returns a PocketBase superuser token. See
+[`docs/meal-assistant-api.md`](./docs/meal-assistant-api.md) for configuration,
+Cloudflare guidance, endpoint examples, and the persisted schema.
 
 ### Install on your phone
 
@@ -93,6 +102,9 @@ the original brief.
   control in the bottom nav. No roles, one account.
 - Cooked-marks and the Sunday choice stay in **`localStorage`**
   (`mp_last_cooked_v1`, `mp_sunday_v1`) — per-device, not shared, not synced.
+- Assistant-created assignments, cooked occurrences, photos, and per-member feedback
+  are persisted in PocketBase. The existing UI's cooked toggle remains local until it
+  is wired to these new records.
 
 ---
 
