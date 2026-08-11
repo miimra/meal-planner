@@ -101,6 +101,9 @@ specific direction; the **Another** button keeps the same constraint:
 Every generated meal is sized for two adults and one baby. Suggestions are
 vegetable-forward, non-spicy, low in added salt and sugar, and include a
 dish-specific instruction for preparing the baby's portion safely.
+Breakfast and lunch are always very simple (easy, at most 20 minutes, and no
+more than eight ingredients). Dinner's visible rotation category is the main
+planning constraint and takes priority over incompatible free-form requests.
 
 At 18:30, PocketBase asks for simple feedback on today's assigned meals and
 sends separate breakfast, lunch, and dinner suggestions for tomorrow. Dinner

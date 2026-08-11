@@ -61,9 +61,9 @@ async function startMockServer() {
         meal,
         name: user.preferences[meal] ? user.preferences[meal] + " skillet" : meal === "dinner" ? "Telegram lemon salmon" : meal === "lunch" ? "Herb sandwich" : "Spinach omelette",
         reason: "It fits the meal and keeps this week varied.",
-        difficulty: user.preferences[meal] && /easy/i.test(user.preferences[meal]) ? "easy" : "medium",
-        prepMinutes: 10,
-        cookMinutes: 20,
+        difficulty: meal !== "dinner" || user.preferences[meal] && /easy/i.test(user.preferences[meal]) ? "easy" : "medium",
+        prepMinutes: meal === "dinner" ? 10 : 5,
+        cookMinutes: meal === "dinner" ? 20 : 10,
         ingredients: ["500 g main ingredient", "1 onion", "2 tbsp olive oil"],
         babyServing: "Set aside before seasoning, cook fully, and mash to a soft texture.",
         existingDishId: null,
@@ -267,6 +267,17 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
     assert.ok((await list("telegram_chats")).find((chat) => chat.chat_id === "111" && chat.type === "private"));
   });
 
+  const today = amsterdamDate();
+  const tomorrow = addDays(today, 1);
+  const suggestionCategory = (await list("categories"))[0];
+  await create("meal_assignments", {
+    date: tomorrow,
+    meal: "dinner",
+    category: suggestionCategory.id,
+    status: "unplanned",
+    selection_source: "telegram",
+  });
+
   let suggestion;
   await t.test("detailed OpenRouter suggestion respects and stores a free-form preference", async () => {
     const response = await webhook({ update_id: 4, message: { message_id: 3, from: { id: 111 }, chat: groupChat, text: "/suggest dinner very easy meat" } });
@@ -283,11 +294,14 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
     assert.equal(suggestion.model, "test/model");
     const request = JSON.parse(mock.openrouter[0].messages.find((message) => message.role === "user").content);
     assert.equal(request.preferences.dinner, "very easy meat");
+    assert.deepEqual(request.dinnerCategory, request.context.requested.dinner.category);
     const systemPrompt = mock.openrouter[0].messages.find((message) => message.role === "system").content;
     assert.match(systemPrompt, /two adults and one baby/);
     assert.match(systemPrompt, /no chili or spicy heat/i);
     assert.match(systemPrompt, /vegetable-forward/);
     assert.match(systemPrompt, /little added salt and sugar/);
+    assert.match(systemPrompt, /dinnerCategory is the highest-priority/);
+    assert.match(systemPrompt, /Breakfast and lunch.*very simple/);
     const sent = mock.telegram.filter((call) => call.method === "sendMessage").at(-1).body.text;
     assert.match(sent, /Difficulty: <b>Easy<\/b>/);
     assert.match(sent, /30 min/);
@@ -296,11 +310,10 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
     assert.match(sent, /2 adults \+ 1 baby/);
     assert.match(sent, /Baby-safe/);
     assert.match(sent, /Baby serving:/);
+    assert.match(sent, /Main dinner category:/);
     assert.doesNotMatch(sent, /53\n|91\n|44\n/);
   });
 
-  const today = amsterdamDate();
-  const tomorrow = addDays(today, 1);
   await t.test("accept, buy food, and eat out actions upsert tomorrow", async () => {
     await webhook({
       update_id: 5,

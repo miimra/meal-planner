@@ -44,6 +44,11 @@ function validateMeal(item, expected) {
     }
     return ingredient.trim();
   });
+  if (expected !== "dinner" && (
+    item.difficulty !== "easy"
+    || item.prepMinutes + item.cookMinutes > 20
+    || ingredients.length > 8
+  )) throw new Error("invalid_ai_response");
   if (typeof item.babyServing !== "string" || !item.babyServing.trim() || item.babyServing.trim().length > 400) {
     throw new Error("invalid_ai_response");
   }

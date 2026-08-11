@@ -107,8 +107,8 @@ function MealCard({ slot, featured }: { slot: MealSlot; featured: boolean }) {
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-ink-faint">{meta.label}</p>
             {slot.category && (
-              <span className="rounded-full bg-clay-soft px-2.5 py-1 text-xs font-bold text-clay-ink">
-                {slot.category.emoji} {slot.category.name_en}
+              <span className="rounded-full bg-clay-soft px-3 py-1.5 text-xs font-extrabold text-clay-ink">
+                Main category · {slot.category.emoji} {slot.category.name_en}
               </span>
             )}
           </div>

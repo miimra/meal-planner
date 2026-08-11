@@ -41,7 +41,9 @@ function weekText(week) {
 }
 
 function suggestionText(suggestion, slot) {
-  const category = slot.category ? "\nCategory: " + escape(slot.category.emoji + " " + slot.category.name) : "";
+  const category = slot.category
+    ? "\n🧭 <b>Main dinner category:</b> " + escape(slot.category.emoji + " " + slot.category.name + (slot.category.nameFa ? " · " + slot.category.nameFa : ""))
+    : "";
   const current = slot.dish ? "\nCurrently: " + escape(slot.dish.name) : "";
   const request = suggestion.getString("request_text");
   const prep = suggestion.getInt("prep_minutes");

@@ -72,7 +72,7 @@ function WeekMeal({ slot }: { slot: MealSlot }) {
       <div className="min-w-0 flex-1">
         <p className="truncate font-bold">{name}</p>
         <p className="truncate text-xs font-medium text-ink-faint">
-          {slot.category ? `${slot.category.emoji} ${slot.category.name_en}` : slot.meal}
+          {slot.category ? `Main category · ${slot.category.emoji} ${slot.category.name_en}` : slot.meal}
         </p>
       </div>
     </div>

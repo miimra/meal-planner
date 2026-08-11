@@ -25,5 +25,8 @@ test("OpenRouter response validator rejects missing, duplicate, and malformed me
   assert.throws(() => response.validateResponse({ meals: [
     { meal: "dinner", name: "A", reason: "Fine", difficulty: "instant", prepMinutes: -1, cookMinutes: 1, ingredients: [], babyServing: "", existingDishId: null },
   ] }, ["dinner"]), /invalid_ai_response/);
+  assert.throws(() => response.validateResponse({ meals: [
+    { meal: "lunch", name: "Complicated lunch", reason: "Too much work.", difficulty: "medium", prepMinutes: 15, cookMinutes: 20, ingredients: ["A"], babyServing: "Serve soft.", existingDishId: null },
+  ] }, ["lunch"]), /invalid_ai_response/);
   assert.throws(() => response.contentJson("not json"), /invalid_ai_response/);
 });
