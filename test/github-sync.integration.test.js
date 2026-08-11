@@ -289,14 +289,6 @@ async function sync(baseUrl) {
   return { response, payload: await response.json() };
 }
 
-async function context(baseUrl) {
-  const response = await fetch(baseUrl + "/api/meal-assistant/context?date=2026-08-12", {
-    headers: { Authorization: `Bearer ${TOKEN}` },
-  });
-  assert.equal(response.status, 200);
-  return response.json();
-}
-
 async function sourceDishes(baseUrl) {
   const filter = encodeURIComponent("github_recipe_id != ''");
   const response = await fetch(
@@ -304,6 +296,20 @@ async function sourceDishes(baseUrl) {
   );
   assert.equal(response.status, 200);
   return (await response.json()).items;
+}
+
+async function adminRecords(baseUrl, collection, token, options = {}) {
+  const query = new URLSearchParams({ perPage: "100" });
+  if (options.filter) query.set("filter", options.filter);
+  if (options.expand) query.set("expand", options.expand);
+  if (options.sort) query.set("sort", options.sort);
+  const response = await fetch(
+    `${baseUrl}/api/collections/${collection}/records?${query}`,
+    { headers: { Authorization: token } },
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(payload));
+  return payload.items;
 }
 
 async function createAuthenticatedUser(baseUrl) {
@@ -341,7 +347,7 @@ async function createAuthenticatedUser(baseUrl) {
   });
   const authPayload = await authResponse.json();
   assert.equal(authResponse.status, 200, JSON.stringify(authPayload));
-  return authPayload.token;
+  return { userToken: authPayload.token, superuserToken };
 }
 
 test("GitHub meal-data synchronization", { timeout: 30_000 }, async (t) => {
@@ -408,7 +414,7 @@ test("GitHub meal-data synchronization", { timeout: 30_000 }, async (t) => {
   } catch (error) {
     assert.fail(`${error.message}\n${logs}`);
   }
-  const userToken = await createAuthenticatedUser(baseUrl);
+  const { userToken, superuserToken } = await createAuthenticatedUser(baseUrl);
 
   await t.test("manual endpoint rejects unauthenticated requests", async () => {
     const response = await fetch(baseUrl + "/api/internal/github-sync", { method: "POST" });
@@ -425,17 +431,27 @@ test("GitHub meal-data synchronization", { timeout: 30_000 }, async (t) => {
     assert.equal(result.payload.summary.suggestionsUpserted, 2);
     assert.equal(result.payload.summary.feedbackUpserted, 2);
 
-    const data = await context(baseUrl);
-    const dinner = data.tomorrow.meals.dinner;
-    assert.equal(dinner.assignment.dish.githubRecipeId, "lemon-herb-salmon");
-    assert.equal(dinner.occurrence.dish.githubRecipeId, "garlic-shrimp");
-    assert.equal(dinner.feedback.length, 2);
+    const assignment = (await adminRecords(baseUrl, "meal_assignments", superuserToken, {
+      filter: "date = '2026-08-12' && meal = 'dinner'",
+      expand: "dish",
+    }))[0];
+    const occurrence = (await adminRecords(baseUrl, "cooked_occurrences", superuserToken, {
+      filter: "date = '2026-08-12' && meal = 'dinner'",
+      expand: "dish",
+    }))[0];
+    const feedback = await adminRecords(baseUrl, "meal_feedback", superuserToken, {
+      filter: `occurrence = '${occurrence.id}'`,
+    });
+    const suggestions = await adminRecords(baseUrl, "meal_suggestions", superuserToken);
+    assert.equal(assignment.expand.dish.github_recipe_id, "lemon-herb-salmon");
+    assert.equal(occurrence.expand.dish.github_recipe_id, "garlic-shrimp");
+    assert.equal(feedback.length, 2);
     assert.deepEqual(
-      dinner.feedback.map((item) => item.externalId).sort(),
+      feedback.map((item) => item.external_id).sort(),
       ["feedback_amir_001", "feedback_maryam_001"],
     );
-    assert.ok(data.recentSuggestions.some((item) =>
-      item.externalId === "sug_rejected_001" && item.outcome === "rejected"));
+    assert.ok(suggestions.some((item) =>
+      item.external_id === "sug_rejected_001" && item.outcome === "rejected"));
   });
 
   await t.test("manual endpoint accepts a logged-in application user", async () => {
@@ -452,8 +468,8 @@ test("GitHub meal-data synchronization", { timeout: 30_000 }, async (t) => {
     const result = await sync(baseUrl);
     assert.equal(result.response.status, 200);
     assert.equal(result.payload.status, "unchanged");
-    const data = await context(baseUrl);
-    assert.equal(data.tomorrow.meals.dinner.feedback.length, 2);
+    const feedback = await adminRecords(baseUrl, "meal_feedback", superuserToken);
+    assert.equal(feedback.length, 2);
   });
 
   await t.test("updates an existing recipe/day and preserves rejected suggestions and deleted source records", async () => {
@@ -471,13 +487,17 @@ test("GitHub meal-data synchronization", { timeout: 30_000 }, async (t) => {
     assert.equal(lemonAfter.name, "Updated Lemon Salmon");
     assert.ok(after.some((dish) => dish.github_recipe_id === "old-fish-pie"));
 
-    const data = await context(baseUrl);
-    assert.equal(data.tomorrow.meals.dinner.assignment.dish.githubRecipeId, "garlic-shrimp");
-    assert.ok(data.recentSuggestions.some((item) => item.externalId === "sug_rejected_001"));
-    assert.ok(data.recentSuggestions.some((item) =>
-      item.externalId === "sug_accepted_002" && item.outcome === "accepted"));
-    const amir = data.tomorrow.meals.dinner.feedback.find((item) =>
-      item.externalId === "feedback_amir_001");
+    const assignment = (await adminRecords(baseUrl, "meal_assignments", superuserToken, {
+      filter: "date = '2026-08-12' && meal = 'dinner'",
+      expand: "dish",
+    }))[0];
+    const suggestions = await adminRecords(baseUrl, "meal_suggestions", superuserToken);
+    const feedback = await adminRecords(baseUrl, "meal_feedback", superuserToken);
+    assert.equal(assignment.expand.dish.github_recipe_id, "garlic-shrimp");
+    assert.ok(suggestions.some((item) => item.external_id === "sug_rejected_001"));
+    assert.ok(suggestions.some((item) =>
+      item.external_id === "sug_accepted_002" && item.outcome === "accepted"));
+    const amir = feedback.find((item) => item.external_id === "feedback_amir_001");
     assert.equal(amir.changes, "The updated note from GitHub.");
   });
 

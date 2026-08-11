@@ -8,6 +8,8 @@ const { spawn, spawnSync } = require("node:child_process");
 
 const ROOT = path.resolve(__dirname, "..");
 const TOKEN = "integration-test-token-0123456789abcdef";
+const SUPERUSER_EMAIL = "context-admin@example.com";
+const SUPERUSER_PASSWORD = "integration-superuser-password";
 
 function findPocketBase() {
   if (process.env.POCKETBASE_BIN && fs.existsSync(process.env.POCKETBASE_BIN)) {
@@ -54,6 +56,34 @@ async function jsonRequest(baseUrl, route, options = {}) {
   return { response, payload };
 }
 
+function dateInAmsterdam(value = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Amsterdam",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const part = (type) => parts.find((item) => item.type === type).value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function addCalendarDays(value, count) {
+  const [year, month, day] = value.split("-").map(Number);
+  const result = new Date(Date.UTC(year, month - 1, day + count));
+  return result.toISOString().slice(0, 10);
+}
+
+async function authenticateSuperuser(baseUrl) {
+  const response = await fetch(baseUrl + "/api/collections/_superusers/auth-with-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identity: SUPERUSER_EMAIL, password: SUPERUSER_PASSWORD }),
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(payload));
+  return payload.token;
+}
+
 test("meal assistant PocketBase routes", { timeout: 30_000 }, async (t) => {
   const pocketbase = findPocketBase();
   if (!pocketbase) {
@@ -64,9 +94,20 @@ test("meal assistant PocketBase routes", { timeout: 30_000 }, async (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "meal-assistant-test-"));
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
+  const dataDir = path.join(tempDir, "pb_data");
+  const processEnv = { ...process.env, MEAL_ASSISTANT_TOKEN: TOKEN };
+  const setup = spawnSync(pocketbase, [
+    "superuser", "upsert", SUPERUSER_EMAIL, SUPERUSER_PASSWORD,
+    "--dir", dataDir,
+    "--migrationsDir", path.join(ROOT, "pb_migrations"),
+    "--hooksDir", path.join(ROOT, "pb_hooks"),
+    "--dev=false",
+  ], { env: processEnv, encoding: "utf8" });
+  assert.equal(setup.status, 0, `${setup.stdout}\n${setup.stderr}`);
+
   const child = spawn(pocketbase, [
     "serve",
-    "--dir", path.join(tempDir, "pb_data"),
+    "--dir", dataDir,
     "--migrationsDir", path.join(ROOT, "pb_migrations"),
     "--hooksDir", path.join(ROOT, "pb_hooks"),
     "--publicDir", path.join(tempDir, "pb_public"),
@@ -75,7 +116,7 @@ test("meal assistant PocketBase routes", { timeout: 30_000 }, async (t) => {
     "--hooksWatch=false",
     "--dev=false",
   ], {
-    env: { ...process.env, MEAL_ASSISTANT_TOKEN: TOKEN },
+    env: processEnv,
     stdio: ["ignore", "pipe", "pipe"],
   });
   let logs = "";
@@ -93,40 +134,89 @@ test("meal assistant PocketBase routes", { timeout: 30_000 }, async (t) => {
   } catch (error) {
     assert.fail(error.message + "\n" + logs);
   }
+  const superuserToken = await authenticateSuperuser(baseUrl);
+  const membersResponse = await fetch(
+    baseUrl + "/api/collections/household_members/records?sort=name&perPage=100",
+    { headers: { Authorization: superuserToken } },
+  );
+  assert.equal(membersResponse.status, 200);
+  const householdMembers = (await membersResponse.json()).items;
 
-  await t.test("missing bearer token returns 401", async () => {
-    const response = await fetch(baseUrl + "/api/meal-assistant/context?date=2026-08-12");
-    assert.equal(response.status, 401);
-  });
+  const categoryResponse = await fetch(baseUrl + "/api/collections/categories/records?perPage=100");
+  assert.equal(categoryResponse.status, 200);
+  const categories = (await categoryResponse.json()).items;
+  const fishCategory = categories.find((category) => category.catId === 6);
 
-  await t.test("invalid bearer token returns 401", async () => {
-    const response = await fetch(baseUrl + "/api/meal-assistant/context?date=2026-08-12", {
-      headers: { Authorization: "Bearer invalid" },
-    });
-    assert.equal(response.status, 401);
+  await t.test("public context uses Amsterdam today and defaults the target to tomorrow", async () => {
+    const before = dateInAmsterdam();
+    const response = await fetch(baseUrl + "/api/meal-assistant/context");
+    const payload = await response.json();
+    const after = dateInAmsterdam();
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /^application\/json/);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.ok(payload.today.date === before || payload.today.date === after);
+    assert.equal(payload.target.date, addCalendarDays(payload.today.date, 1));
+    assert.equal(payload.schemaVersion, 1);
+    assert.equal(payload.timezone, "Europe/Amsterdam");
+    assert.match(payload.generatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
   });
 
   let context;
-  await t.test("context returns Monday-Sunday schedule and household members", async () => {
-    const result = await jsonRequest(baseUrl, "/api/meal-assistant/context?date=2026-08-12");
-    assert.equal(result.response.status, 200);
-    assert.equal(result.response.headers.get("cache-control"), "private, no-store");
-    context = result.payload;
-    assert.equal(context.targetDate, "2026-08-12");
-    assert.equal(context.today.date, "2026-08-11");
-    assert.equal(context.tomorrow.date, "2026-08-12");
+  await t.test("explicit date returns the narrow Monday-Sunday read model", async () => {
+    const response = await fetch(baseUrl + "/api/meal-assistant/context?date=2026-08-12");
+    context = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(context.target.date, "2026-08-12");
     assert.deepEqual([context.week.start, context.week.end], ["2026-08-10", "2026-08-16"]);
     assert.equal(context.week.days.length, 7);
-    assert.deepEqual(context.householdMembers.map((member) => member.name), ["Amir", "Maryam"]);
-    assert.equal(context.tomorrow.meals.dinner.category.catId, 6);
+    assert.deepEqual(
+      context.week.days.map((day) => day.date),
+      [
+        "2026-08-10", "2026-08-11", "2026-08-12", "2026-08-13",
+        "2026-08-14", "2026-08-15", "2026-08-16",
+      ],
+    );
+    for (const day of [context.today, context.target, ...context.week.days]) {
+      assert.deepEqual(Object.keys(day.meals).sort(), ["breakfast", "dinner", "lunch"]);
+    }
+    assert.equal(context.target.meals.breakfast.category, null);
+    assert.equal(context.target.meals.breakfast.assignment, null);
+    assert.equal(context.target.meals.lunch.assignment, null);
+    assert.deepEqual(context.target.meals.dinner.category, {
+      id: fishCategory.id,
+      name: fishCategory.name_en,
+    });
+
+    assert.deepEqual(Object.keys(context).sort(), [
+      "generatedAt", "schemaVersion", "target", "timezone", "today", "week",
+    ]);
+    const serialized = JSON.stringify(context);
+    for (const forbidden of [
+      "householdMembers", "householdPreferences", "recentFeedback", "recentSuggestions",
+      "email", "password", "token", "created", "updated", "notes", "preferenceNotes",
+    ]) {
+      assert.equal(serialized.includes(`\"${forbidden}\"`), false, forbidden);
+    }
   });
 
-  await t.test("Monday and Sunday queries share the strict calendar-week boundary", async () => {
+  await t.test("invalid and impossible dates return a small 400 response", async () => {
+    for (const date of ["abc", "2026-99-42", "2026-02-30", ""]) {
+      const response = await fetch(baseUrl + "/api/meal-assistant/context?date=" + date);
+      assert.equal(response.status, 400, date);
+      assert.deepEqual(await response.json(), { error: "invalid_date" });
+    }
+  });
+
+  await t.test("Monday and Sunday targets use the same real calendar week", async () => {
     for (const date of ["2026-08-10", "2026-08-16"]) {
-      const result = await jsonRequest(baseUrl, "/api/meal-assistant/context?date=" + date);
-      assert.equal(result.response.status, 200);
-      assert.equal(result.payload.week.start, "2026-08-10");
-      assert.equal(result.payload.week.end, "2026-08-16");
+      const response = await fetch(baseUrl + "/api/meal-assistant/context?date=" + date);
+      const payload = await response.json();
+      assert.equal(response.status, 200);
+      assert.equal(payload.week.start, "2026-08-10");
+      assert.equal(payload.week.end, "2026-08-16");
     }
   });
 
@@ -194,10 +284,20 @@ test("meal assistant PocketBase routes", { timeout: 30_000 }, async (t) => {
     assert.equal(result.response.status, 409);
   });
 
-  await t.test("context exposes existing assignments and weekly used dishes", async () => {
-    const result = await jsonRequest(baseUrl, "/api/meal-assistant/context?date=2026-08-12");
-    assert.equal(result.payload.tomorrow.meals.dinner.assignment.dish.id, newDish.id);
-    assert.ok(result.payload.week.usedDishIds.includes(newDish.id));
+  await t.test("public context immediately reflects existing assignments", async () => {
+    const response = await fetch(baseUrl + "/api/meal-assistant/context?date=2026-08-12");
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(payload.target.meals.breakfast.assignment, {
+      dishId: seedDish.id,
+      name: seedDish.name,
+    });
+    assert.deepEqual(payload.target.meals.dinner.assignment, {
+      dishId: newDish.id,
+      name: newDish.name,
+    });
+    const targetInWeek = payload.week.days.find((day) => day.date === "2026-08-12");
+    assert.deepEqual(targetInWeek.meals.dinner.assignment, payload.target.meals.dinner.assignment);
   });
 
   await t.test("rejects invalid meal types", async () => {
@@ -210,7 +310,7 @@ test("meal assistant PocketBase routes", { timeout: 30_000 }, async (t) => {
   });
 
   await t.test("creates attributable feedback from multiple household members", async () => {
-    for (const [index, member] of context.householdMembers.entries()) {
+    for (const [index, member] of householdMembers.entries()) {
       const result = await jsonRequest(baseUrl, "/api/meal-assistant/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -227,8 +327,13 @@ test("meal assistant PocketBase routes", { timeout: 30_000 }, async (t) => {
       assert.equal(result.response.status, 201);
       assert.equal(result.payload.feedback.member.id, member.id);
     }
-    const updated = await jsonRequest(baseUrl, "/api/meal-assistant/context?date=2026-08-12");
-    assert.equal(updated.payload.tomorrow.meals.dinner.feedback.length, 2);
+    const filter = encodeURIComponent(`dish = '${newDish.id}'`);
+    const feedbackResponse = await fetch(
+      baseUrl + `/api/collections/meal_feedback/records?filter=${filter}&perPage=100`,
+      { headers: { Authorization: superuserToken } },
+    );
+    assert.equal(feedbackResponse.status, 200);
+    assert.equal((await feedbackResponse.json()).items.length, 2);
   });
 
   await t.test("uploads and bearer-protects a cooked photo", async () => {

@@ -190,60 +190,19 @@ function suggestionJson(app, record) {
   };
 }
 
-function categoriesByCatIds(app, catIds) {
-  const result = [];
-  for (const catId of catIds) {
-    const record = firstByFilter(app, "categories", "catId = {:catId}", { catId });
-    if (record) result.push(categoryJson(record));
-  }
-  return result;
-}
-
-function scheduleFor(app, date, meal) {
-  if (meal !== "dinner") {
-    return { kind: "unspecified", rotationWeek: null, category: null, categoryChoices: [] };
-  }
-  const rotation = lib.dinnerRotation(date);
-  if (rotation.kind === "category") {
-    return {
-      kind: rotation.kind,
-      rotationWeek: rotation.rotationWeek,
-      category: categoriesByCatIds(app, [rotation.catId])[0] || null,
-      categoryChoices: [],
-    };
-  }
-  return {
-    kind: rotation.kind,
-    rotationWeek: rotation.rotationWeek,
-    category: null,
-    categoryChoices: categoriesByCatIds(app, rotation.choiceCatIds || []),
-  };
-}
-
-function emptyDay(app, date) {
-  const meals = {};
-  for (const meal of lib.MEALS) {
-    const schedule = scheduleFor(app, date, meal);
-    meals[meal] = {
-      category: schedule.category,
-      categoryChoices: schedule.categoryChoices,
-      schedule: { kind: schedule.kind, rotationWeek: schedule.rotationWeek },
-      assignment: null,
-      occurrence: null,
-      feedback: [],
-    };
-  }
-  return { date, meals };
-}
-
 function context(e) {
-  e.response.header().set("Cache-Control", "private, no-store");
-  const targetDate = e.request.url.query().get("date");
+  e.response.header().set("Cache-Control", "no-store");
+
+  const timezone = "Europe/Amsterdam";
+  const now = new DateTime().time().in(new Timezone(timezone));
+  const generatedAt = now.format("2006-01-02T15:04:05-07:00");
+  const todayDate = now.format("2006-01-02");
+  const query = e.request.url.query();
+  const targetDate = query.has("date") ? query.get("date") : lib.addDays(todayDate, 1);
   lib.parseDate(targetDate);
-  const todayDate = lib.addDays(targetDate, -1);
   const bounds = lib.weekBounds(targetDate);
   const fromDate = todayDate < bounds.start ? todayDate : bounds.start;
-  const toDate = targetDate > bounds.end ? targetDate : bounds.end;
+  const toDate = todayDate > bounds.end ? todayDate : bounds.end;
 
   const assignments = e.app.findRecordsByFilter(
     "meal_assignments",
@@ -253,103 +212,68 @@ function context(e) {
     0,
     { from: fromDate, to: toDate },
   );
-  const occurrences = e.app.findRecordsByFilter(
-    "cooked_occurrences",
-    "date >= {:from} && date <= {:to} && (github_managed = false || source_present = true)",
-    "date,meal",
-    0,
-    0,
-    { from: fromDate, to: toDate },
-  );
-  const feedbackRecords = e.app.findRecordsByFilter("meal_feedback", "", "-created", 100, 0);
-  const feedbackByOccurrence = {};
-  for (const feedback of feedbackRecords) {
-    const occurrenceId = feedback.getString("occurrence");
-    if (!feedbackByOccurrence[occurrenceId]) feedbackByOccurrence[occurrenceId] = [];
-    feedbackByOccurrence[occurrenceId].push(feedbackJson(e.app, feedback));
+
+  const categoriesById = {};
+  const categoriesByCatId = {};
+  const categoryRecords = e.app.findRecordsByFilter("categories", "", "catId", 0, 0);
+  for (const category of categoryRecords) {
+    categoriesById[category.id] = category;
+    categoriesByCatId[String(category.getInt("catId"))] = category;
   }
 
-  const daysByDate = {};
-  for (let i = 0; i < 7; i += 1) {
-    const key = lib.addDays(bounds.start, i);
-    daysByDate[key] = emptyDay(e.app, key);
-  }
-  if (!daysByDate[todayDate]) daysByDate[todayDate] = emptyDay(e.app, todayDate);
-  if (!daysByDate[targetDate]) daysByDate[targetDate] = emptyDay(e.app, targetDate);
-
+  const dishIds = [];
   for (const assignment of assignments) {
-    const day = daysByDate[assignment.getString("date")];
-    if (day) day.meals[assignment.getString("meal")].assignment = assignmentJson(e.app, assignment);
+    const dishId = assignment.getString("dish");
+    if (dishId && dishIds.indexOf(dishId) === -1) dishIds.push(dishId);
   }
-  for (const occurrence of occurrences) {
-    const day = daysByDate[occurrence.getString("date")];
-    if (day) {
-      const slot = day.meals[occurrence.getString("meal")];
-      slot.occurrence = occurrenceJson(e.app, occurrence);
-      slot.feedback = feedbackByOccurrence[occurrence.id] || [];
+  const dishesById = {};
+  if (dishIds.length) {
+    for (const dish of e.app.findRecordsByIds("dishes", dishIds)) dishesById[dish.id] = dish;
+  }
+
+  const assignmentsBySlot = {};
+  for (const assignment of assignments) {
+    assignmentsBySlot[assignment.getString("date") + ":" + assignment.getString("meal")] = assignment;
+  }
+
+  function compactCategory(record) {
+    return record ? { id: record.id, name: record.getString("name_en") } : null;
+  }
+
+  function dayJson(date) {
+    const meals = {};
+    for (const meal of lib.MEALS) {
+      const assignment = assignmentsBySlot[date + ":" + meal] || null;
+      const assignedCategory = assignment
+        ? categoriesById[assignment.getString("category")] || null
+        : null;
+      let category = assignedCategory;
+      if (!category && meal === "dinner") {
+        const rotation = lib.dinnerRotation(date);
+        if (rotation.kind === "category") {
+          category = categoriesByCatId[String(rotation.catId)] || null;
+        }
+      }
+
+      const dish = assignment ? dishesById[assignment.getString("dish")] || null : null;
+      meals[meal] = {
+        category: compactCategory(category),
+        assignment: dish ? { dishId: dish.id, name: dish.getString("name") } : null,
+      };
     }
+    return { date, meals };
   }
 
-  const usedIds = {};
-  for (const assignment of assignments) {
-    const date = assignment.getString("date");
-    if (date >= bounds.start && date <= bounds.end) usedIds[assignment.getString("dish")] = true;
-  }
-  for (const occurrence of occurrences) {
-    const date = occurrence.getString("date");
-    if (date >= bounds.start && date <= bounds.end) usedIds[occurrence.getString("dish")] = true;
-  }
-  const usedDishIds = Object.keys(usedIds);
-  const usedDishes = [];
-  for (const id of usedDishIds) {
-    const dish = optionalRecordById(e.app, "dishes", id);
-    if (dish) usedDishes.push(dishJson(e.app, dish));
-  }
-
-  const recentOccurrenceRecords = e.app.findRecordsByFilter(
-    "cooked_occurrences",
-    "github_managed = false || source_present = true",
-    "-date,-created",
-    30,
-    0,
-  );
-  const recentDishes = [];
-  for (const occurrence of recentOccurrenceRecords) {
-    recentDishes.push({
-      date: occurrence.getString("date"),
-      meal: occurrence.getString("meal"),
-      dish: dishJson(e.app, optionalRecordById(e.app, "dishes", occurrence.getString("dish"))),
-    });
-  }
-
-  const members = e.app.findRecordsByFilter("household_members", "active = true", "name", 0, 0);
-  const householdSettings = firstByFilter(
-    e.app,
-    "household_settings",
-    "source_key = 'github'",
-  );
-  const suggestionRecords = e.app.findRecordsByFilter("meal_suggestions", "", "-created", 50, 0);
   const weekDays = [];
-  for (let i = 0; i < 7; i += 1) weekDays.push(daysByDate[lib.addDays(bounds.start, i)]);
+  for (let i = 0; i < 7; i += 1) weekDays.push(dayJson(lib.addDays(bounds.start, i)));
 
   return e.json(200, {
-    targetDate,
-    week: {
-      start: bounds.start,
-      end: bounds.end,
-      usedDishIds,
-      usedDishes,
-      days: weekDays,
-    },
-    today: daysByDate[todayDate],
-    tomorrow: daysByDate[targetDate],
-    recentDishes,
-    recentFeedback: feedbackRecords.map((record) => feedbackJson(e.app, record)),
-    recentSuggestions: suggestionRecords.map((record) => suggestionJson(e.app, record)),
-    householdMembers: members.map(memberJson),
-    householdPreferences: householdSettings
-      ? jsonField(householdSettings, "preferences", {})
-      : null,
+    schemaVersion: 1,
+    generatedAt,
+    timezone,
+    today: dayJson(todayDate),
+    target: dayJson(targetDate),
+    week: { start: bounds.start, end: bounds.end, days: weekDays },
   });
 }
 

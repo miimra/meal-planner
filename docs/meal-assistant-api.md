@@ -24,15 +24,16 @@ docker run -p 8090:8090 \
   meal-planner
 ```
 
-Every request must include:
+Every mutation and photo request must include:
 
 ```text
 Authorization: Bearer <MEAL_ASSISTANT_TOKEN>
 ```
 
-Missing and invalid credentials receive the same `401` response. Token hashes are
-compared using PocketBase's constant-time security helper. If the configured token is
-absent or shorter than 32 characters, the API remains unavailable.
+`GET /api/meal-assistant/context` is the sole exception: it is deliberately public and
+returns only the narrow live planning state documented below. Missing and invalid
+credentials on protected routes receive the same `401` response. Token hashes are
+compared using PocketBase's constant-time security helper.
 
 The examples below assume:
 
@@ -142,27 +143,29 @@ Formal Draft 2020-12 schemas and working examples live in the checked-in
 
 ## Context
 
-`date` is the target planning date (normally tomorrow). Consequently `today` is the
-preceding date and `tomorrow` is the target date. The week always contains the calendar
-Monday through Sunday that contains the target date.
+`date` is the target planning date. If omitted, the target is tomorrow in
+`Europe/Amsterdam`. `today` is always the actual Amsterdam calendar day, independent
+of the requested target. The week always contains the real calendar Monday through
+Sunday containing the target date.
 
 ```bash
-curl --fail-with-body \
-  -H "Authorization: Bearer $TOKEN" \
-  "$BASE_URL/api/meal-assistant/context?date=2026-08-12"
+curl --fail-with-body "$BASE_URL/api/meal-assistant/context"
+curl --fail-with-body "$BASE_URL/api/meal-assistant/context?date=2026-08-12"
 ```
 
 The response contains:
 
-- today and target-day breakfast, lunch, and dinner slots;
-- each slot's category schedule, assignment, cooked occurrence, and feedback;
-- all seven Monday-Sunday days, plus `usedDishIds` and complete used dishes;
-- recent cooked-dish history, per-member feedback, and suggestion outcomes;
-- active household members and their stored preference notes.
+- `schemaVersion`, an Amsterdam-offset `generatedAt`, and the fixed timezone;
+- today and target breakfast, lunch, and dinner slots;
+- each slot's compact category and current assignment, or `null`;
+- all seven Monday-Sunday dates with the same three slots.
 
 The existing two-week rotation only defines dinner. Breakfast and lunch therefore have
-an `unspecified` schedule until assigned. Saturday dinner is `eat-out`; Sunday dinner
-returns the existing two category choices.
+no category until one is stored with an assignment. Saturday and an unassigned Sunday
+have no single dinner category. The payload excludes members, feedback, recipe content,
+notes, record timestamps, authentication data, and redundant `usedThisWeek` state.
+Responses use `Cache-Control: no-store`; invalid dates return
+`{"error":"invalid_date"}` with status `400`.
 
 ## Assign an existing dish
 
@@ -220,7 +223,8 @@ database index on `(date, meal)` is a second line of duplicate protection.
 
 ## Feedback
 
-Use a `memberId` returned by the context endpoint. Repeating feedback for the same
+This protected legacy route requires a known PocketBase household `memberId`; the
+public context intentionally does not expose members. Repeating feedback for the same
 cooked occurrence and member updates that member's prior response; another member gets
 an independent response.
 
@@ -323,13 +327,13 @@ source metadata. It also adds locked `household_settings` and
 ## Cloudflare
 
 No broad `/api/*` bypass is needed. Keep the existing public block for `/_/` exactly as
-it is. If a Cloudflare rule currently blocks all unknown paths, add
-`/api/meal-assistant/*` plus the exact `/api/internal/github-sync` path to the origin
-allowlist. Permit `GET` and `POST` with request bodies up to 25 MiB. Forward the
-`Authorization` header and multipart bodies unchanged.
+it is. The exact `GET /api/meal-assistant/context` path must pass without a challenge;
+protected `/api/meal-assistant/*` mutations and the exact `/api/internal/github-sync`
+path may retain their existing origin allow rules. Forward authorization headers and
+multipart bodies unchanged for protected routes.
 
 Cloudflare's allow rule is not authentication: PocketBase still validates the bearer
-token on every assistant route. Do not cache context or mutation responses, and redact
+token on every protected route. Do not cache context or mutation responses, and redact
 the `Authorization` header from request logs if it is captured by any custom logging.
 
 ## Tests

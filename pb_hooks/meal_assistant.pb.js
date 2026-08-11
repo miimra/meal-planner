@@ -15,10 +15,11 @@ routerAdd("GET", "/api/meal-assistant/context", (e) => {
   try {
     return service.context(e);
   } catch (error) {
-    if (error && error.status === 400) throw new BadRequestError(error.message);
-    throw error;
+    if (error && error.status === 400) return e.json(400, { error: "invalid_date" });
+    e.app.logger().error("Public meal context failed", "error", String(error));
+    return e.json(500, { error: "internal_error" });
   }
-}, mealAssistantAuth);
+});
 
 routerAdd("POST", "/api/meal-assistant/assign", (e) => {
   const service = require(`${__hooks}/meal_assistant/service.js`);

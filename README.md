@@ -56,9 +56,9 @@ PocketBase serves both the app and its API from `http://localhost:8090`. On
 first run, create your one login account at `http://localhost:8090/_/`
 (PocketBase's Admin UI) — there's no in-app signup.
 
-The optional purpose-built Meal Assistant API is mounted only at
-`/api/meal-assistant/*` and requires `MEAL_ASSISTANT_TOKEN` on every request.
-It never uses or returns a PocketBase superuser token. See
+The purpose-built Meal Assistant API is mounted only at `/api/meal-assistant/*`.
+Its narrow `GET /context` read model is public; mutation and photo routes require
+`MEAL_ASSISTANT_TOKEN`. It never uses or returns a PocketBase superuser token. See
 [`docs/meal-assistant-api.md`](./docs/meal-assistant-api.md) for configuration,
 Cloudflare guidance, endpoint examples, and the persisted schema.
 
