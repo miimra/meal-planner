@@ -11,15 +11,18 @@ function decodeBytes(bytes) {
 }
 
 function arrayField(record, name) {
+  const raw = valueField(record, name);
+  return Array.isArray(raw) ? raw : [];
+}
+
+function valueField(record, name) {
   const raw = record.get(name);
-  if (!Array.isArray(raw)) return [];
-  if (!raw.length || typeof raw[0] !== "number") return raw;
+  if (!Array.isArray(raw) || !raw.length || typeof raw[0] !== "number") return raw;
   try {
-    const parsed = JSON.parse(decodeBytes(raw));
-    return Array.isArray(parsed) ? parsed : [];
+    return JSON.parse(decodeBytes(raw));
   } catch (_) {
-    return [];
+    return null;
   }
 }
 
-module.exports = { arrayField, decodeBytes };
+module.exports = { arrayField, decodeBytes, valueField };

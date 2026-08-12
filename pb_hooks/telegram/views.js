@@ -76,6 +76,137 @@ function mealsKeyboard(today, tomorrow) {
   return { inline_keyboard: [
     [{ text: "Today", callback_data: "nav:day:" + today }, { text: "Tomorrow", callback_data: "nav:day:" + tomorrow }],
     [{ text: "📅 This week", callback_data: "nav:week" }, { text: "✏️ Change a meal", callback_data: "nav:change" }],
+    [{ text: "🔖 Want to try", callback_data: "nav:saved" }],
+    [{ text: "🏠 Home", callback_data: "nav:home" }],
+  ] };
+}
+
+function savedRecipesText(dishes) {
+  const lines = ["🔖 <b>Want to try</b>", "", "Recipes saved from links can be suggested when they fit the meal and dinner category."];
+  if (!dishes || !dishes.length) {
+    lines.push("", "Send me a public recipe, YouTube, or Instagram link to add the first one.");
+    return lines.join("\n");
+  }
+  lines.push("");
+  for (const dish of dishes.slice(0, 30)) {
+    const platform = dish.getString("source_platform");
+    const icon = platform === "youtube" ? "▶️" : platform === "instagram" ? "📸" : "🌐";
+    lines.push(icon + " " + escape(dish.getString("name")));
+  }
+  if (dishes.length > 30) lines.push("", "…and " + (dishes.length - 30) + " more");
+  return lines.join("\n");
+}
+
+function recipeImportAnalyzingText(platform) {
+  const label = platform === "youtube" ? "YouTube link" : platform === "instagram" ? "Instagram link" : "recipe link";
+  return "🔎 <b>Analyzing " + label + "</b>\n\nI’m looking for ingredients, instructions, time, and the best household category. Nothing will be saved until you confirm.";
+}
+
+function recipeImportPreviewText(recipe, platform, confidence) {
+  const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+  const instructions = Array.isArray(recipe.instructions) ? recipe.instructions : [];
+  const lines = [
+    "🔖 <b>Recipe found</b>",
+    "",
+    "<b>" + escape(String(recipe.name || "Untitled recipe").slice(0, 100)) + "</b>",
+  ];
+  if (recipe.category) lines.push("🧭 " + escape(String(recipe.category).slice(0, 100)));
+  const total = Number(recipe.prepMinutes || 0) + Number(recipe.cookMinutes || 0);
+  const details = [];
+  if (total) details.push("⏱ " + total + " min");
+  if (recipe.difficulty) details.push(escape(recipe.difficulty));
+  if (recipe.servings) details.push("serves " + escape(recipe.servings));
+  if (details.length) lines.push(details.join(" · "));
+  if (ingredients.length) {
+    lines.push("", "🛒 <b>Ingredients</b>");
+    for (const ingredient of ingredients.slice(0, 6)) lines.push("• " + escape(String(ingredient).slice(0, 60)));
+    if (ingredients.length > 6) lines.push("• …and " + (ingredients.length - 6) + " more");
+  }
+  if (instructions.length) lines.push("", "👩‍🍳 " + instructions.length + " instruction" + (instructions.length === 1 ? "" : "s") + " extracted");
+  if (recipe.dietaryNotes) lines.push("", "⚠️ " + escape(recipe.dietaryNotes));
+  const source = platform === "youtube" ? "YouTube" : platform === "instagram" ? "Instagram" : "Web";
+  lines.push("", "Source: " + source + " · Confidence: " + Math.round(Math.max(0, Math.min(1, Number(confidence || 0))) * 100) + "%");
+  lines.push("", "Saving adds it to <b>Want to try</b>; it does not schedule a meal.");
+  return lines.join("\n");
+}
+
+function recipeImportKeyboard(importRecord, recipe) {
+  const rows = [];
+  if (recipe && recipe.category) rows.push([{ text: "✅ Save to want to try", callback_data: "ri:save:" + importRecord.id }]);
+  else rows.push([{ text: "🧭 Choose category to continue", callback_data: "ri:cats:" + importRecord.id }]);
+  rows.push(
+    [{ text: "🔎 Details", callback_data: "ri:details:" + importRecord.id }, { text: "🧭 Change category", callback_data: "ri:cats:" + importRecord.id }],
+    [{ text: "🔄 Retry", callback_data: "ri:retry:" + importRecord.id }],
+    [{ text: "✖ Cancel", callback_data: "ri:cancel:" + importRecord.id }, { text: "🏠 Home", callback_data: "nav:home" }],
+  );
+  return { inline_keyboard: rows };
+}
+
+function recipeImportDetailsText(recipe, missingFields) {
+  const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+  const instructions = Array.isArray(recipe.instructions) ? recipe.instructions : [];
+  const lines = ["🔎 <b>Imported recipe details</b>", "", "<b>" + escape(String(recipe.name || "Recipe").slice(0, 200)) + "</b>"];
+  if (recipe.category) lines.push("Category: <b>" + escape(String(recipe.category).slice(0, 100)) + "</b>");
+  function pushWithin(value) {
+    if (lines.join("\n").length + value.length + 1 > 3800) return false;
+    lines.push(value);
+    return true;
+  }
+  if (ingredients.length) {
+    lines.push("", "🛒 <b>Ingredients</b>");
+    for (const item of ingredients.slice(0, 20)) if (!pushWithin("• " + escape(String(item).slice(0, 120)))) break;
+  }
+  if (instructions.length) {
+    lines.push("", "👩‍🍳 <b>Instructions</b>");
+    for (let index = 0; index < instructions.length && index < 10; index += 1) {
+      if (!pushWithin((index + 1) + ". " + escape(String(instructions[index]).slice(0, 240)))) break;
+    }
+    if (instructions.length > 10) lines.push("…and " + (instructions.length - 10) + " more steps");
+  }
+  if (missingFields && missingFields.length) lines.push("", "⚠️ Missing or uncertain: " + escape(missingFields.join(", ")));
+  return lines.join("\n");
+}
+
+function recipeCategoryKeyboard(importRecord, categories) {
+  const rows = [];
+  for (let index = 0; index < categories.length; index += 2) {
+    rows.push(categories.slice(index, index + 2).map((category) => ({
+      text: category.getString("emoji") + " " + category.getString("name_en"),
+      callback_data: "ri:cat:" + importRecord.id + ":" + category.id,
+    })));
+  }
+  rows.push([{ text: "‹ Recipe", callback_data: "ri:view:" + importRecord.id }, { text: "✖ Cancel", callback_data: "ri:cancel:" + importRecord.id }]);
+  return { inline_keyboard: rows };
+}
+
+function recipeImportNeedsInputText(platform, reason) {
+  const source = platform === "youtube" ? "YouTube" : platform === "instagram" ? "Instagram" : "that page";
+  return [
+    "📝 <b>I need more recipe information</b>",
+    "",
+    "I could not reliably extract a complete recipe from " + source + ". " + escape(reason || "The useful details may be inside a video or behind a login."),
+    "",
+    "Please send a different public recipe link. Support for analyzing forwarded video, screenshots, and pasted captions will be added separately.",
+    "",
+    "Nothing has been saved.",
+  ].join("\n");
+}
+
+function recipeImportSavedText(dish) {
+  return "✅ <b>Saved to want to try</b>\n\n<b>" + escape(String(dish.getString("name") || "Recipe").slice(0, 200)) + "</b> can now appear in suggestions when it fits the meal and category. No meal was scheduled.";
+}
+
+function recipeImportCancelledText() {
+  return "✖ <b>Recipe import cancelled</b>\n\nNothing was added to the meal library or plan.";
+}
+
+function recipeImportAlreadySavedText(dish) {
+  return "🔖 <b>Already saved</b>\n\n<b>" + escape(String(dish.getString("name") || "This recipe").slice(0, 200)) + "</b> is already in Want to try.";
+}
+
+function recipeImportNeedsInputKeyboard(importRecord) {
+  return { inline_keyboard: [
+    [{ text: "🔄 Retry link", callback_data: "ri:retry:" + importRecord.id }, { text: "✖ Cancel", callback_data: "ri:cancel:" + importRecord.id }],
     [{ text: "🏠 Home", callback_data: "nav:home" }],
   ] };
 }
@@ -194,6 +325,17 @@ module.exports = {
   mealKeyboard,
   mealsKeyboard,
   mealsText,
+  recipeCategoryKeyboard,
+  recipeImportAnalyzingText,
+  recipeImportAlreadySavedText,
+  recipeImportCancelledText,
+  recipeImportDetailsText,
+  recipeImportKeyboard,
+  recipeImportNeedsInputKeyboard,
+  recipeImportNeedsInputText,
+  recipeImportPreviewText,
+  recipeImportSavedText,
+  savedRecipesText,
   settingsKeyboard,
   settingsText,
   slotLine,

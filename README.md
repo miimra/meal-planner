@@ -38,6 +38,7 @@ TELEGRAM_WEBHOOK_SECRET=
 OPENROUTER_API_KEY=
 OPENROUTER_MODEL=
 OPENROUTER_IMAGE_MODEL=openai/gpt-5-image-mini
+YOUTUBE_API_KEY=
 PUBLIC_BASE_URL=https://meal.number34.nl
 APP_TIMEZONE=Europe/Amsterdam
 TELEGRAM_DAILY_CRON="30 18 * * *"
@@ -45,6 +46,10 @@ TELEGRAM_DAILY_CRON="30 18 * * *"
 
 `TELEGRAM_WEBHOOK_SECRET` must be a random value of at least 24 characters.
 Tokens and API keys must never be committed.
+
+`YOUTUBE_API_KEY` is optional. When present, recipe-link imports use the
+official YouTube Data API to inspect public titles and descriptions. It does
+not grant access to arbitrary video transcripts.
 
 For production, keep these values in
 `/home/raptor/services/meal-planner/meal-planner.env` on the printer server,
@@ -102,6 +107,18 @@ mentioned or the message replies to the bot. Answers use Amsterdam time,
 stored assignments and feedback, household preferences, and the next two
 weeks of dinner categories. Natural-language answers can recommend a date but
 cannot alter assignments; all mutations require a button.
+
+Authorized members can also send a public recipe URL as ordinary text. The bot
+sends a new analysis response and edits that response into a preview. **Save
+to want to try** is the only action that creates a dish; cancelling or merely
+sending a link never changes the meal library or plan. Public recipe pages use
+Schema.org recipe data when available, YouTube uses official metadata and
+linked recipe pages, and Instagram is best-effort. If the recipe exists only
+inside inaccessible video/audio, the bot asks for pasted ingredients,
+instructions, caption, or another public link rather than inventing details.
+Confirmed recipes appear under **Meals → Want to try** and can be suggested
+when they fit category, household preferences, feedback, recency, time, and
+difficulty.
 
 Every new command, authorized question, or feedback photo receives a new bot
 response. Buttons edit the response message that contains them, so independent

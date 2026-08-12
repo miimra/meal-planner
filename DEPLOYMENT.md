@@ -6,6 +6,12 @@ container `meal-planner`. Deployments are performed by
 The household-assistant release below was deployed with the script after the
 complete local test suite and production build passed.
 
+The recipe-link-import release adds the private `recipe_imports` collection,
+confirmed `want_to_try` dish metadata, secure public-page ingestion, and
+category/feedback-aware recommendation candidates. Its deployment record is
+updated after the production image is replaced; no verification step sends a
+family-chat message.
+
 ## Recorded deployment
 
 | Field | Value |

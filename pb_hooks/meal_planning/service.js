@@ -5,6 +5,7 @@ const json = require(`${__hooks}/shared/json.js`);
 const openrouter = require(`${__hooks}/openrouter/client.js`);
 const preference = require(`${__hooks}/meal_planning/preference.js`);
 const prompt = require(`${__hooks}/openrouter/prompt.js`);
+const recommendation = require(`${__hooks}/meal_planning/recommendation.js`);
 
 function first(app, collection, filter, params, sort) {
   const records = app.findRecordsByFilter(collection, filter, sort || "", 1, 0, params || {});
@@ -99,12 +100,26 @@ function weekValue(app, date) {
 
 function aiContext(app, targetDate, meals) {
   const week = weekValue(app, targetDate);
-  const dishes = app.findRecordsByFilter("dishes", "", "name", 0, 0).map((dish) => ({
+  const dishes = app.findRecordsByFilter("dishes", "", "name", 0, 0).map((dish) => {
+    const tags = json.arrayField(dish, "tags").slice(0, 20).map((item) => String(item).slice(0, 100));
+    return {
     id: dish.id,
     name: dish.getString("name"),
     categoryId: dish.getInt("catId") || null,
-    notes: dish.getString("notes") || null,
-  }));
+    notes: String(dish.getString("notes") || "").slice(0, 500) || null,
+    lifecycle: dish.getString("lifecycle") || "regular",
+    sourceUrl: dish.getString("source_url") || null,
+    sourcePlatform: dish.getString("source_platform") || null,
+    ingredients: json.arrayField(dish, "ingredients").slice(0, 20).map((item) => String(item).slice(0, 200)),
+    instructions: json.arrayField(dish, "instructions").slice(0, 15).map((item) => String(item).slice(0, 500)),
+    prepMinutes: dish.getInt("prep_minutes") || 0,
+    cookMinutes: dish.getInt("cook_minutes") || 0,
+    difficulty: dish.getString("difficulty") || null,
+    cuisine: dish.getString("cuisine") || null,
+    tags,
+    mealTypes: tags.filter((item) => item.indexOf("meal:") === 0).map((item) => item.slice(5)),
+  };
+  });
   const feedback = app.findRecordsByFilter("meal_feedback", "", "-created", 100, 0).map((item) => ({
     dishId: item.getString("dish") || null,
     rating: item.getString("rating"),
@@ -121,13 +136,47 @@ function aiContext(app, targetDate, meals) {
     0,
     { date: targetDate },
   ).map((item) => ({ meal: item.getString("meal"), name: item.getString("suggested_name") }));
+  const occurrences = app.findRecordsByFilter("cooked_occurrences", "date < {:date}", "-date", 200, 0, { date: targetDate })
+    .map((item) => ({ dishId: item.getString("dish") || null, date: item.getString("date") }));
   const requested = {};
   const servings = {};
+  const candidates = {};
+  const assignedDishIds = [];
+  for (const day of week.days) {
+    for (const meal of calendar.MEALS) {
+      const id = day.meals[meal].dish && day.meals[meal].dish.id;
+      if (id && assignedDishIds.indexOf(id) === -1) assignedDishIds.push(id);
+    }
+  }
   for (const meal of meals) {
     requested[meal] = slotValue(app, targetDate, meal);
     servings[meal] = calendar.servingProfile(targetDate, meal);
+    const rotation = meal === "dinner" ? calendar.dinnerRotation(targetDate) : null;
+    const categoryIds = requested[meal].category
+      ? [requested[meal].category.catId]
+      : (rotation && rotation.kind === "choice" ? rotation.catIds : []);
+    candidates[meal] = recommendation.rankCandidates(dishes, {
+      meal,
+      assignedDishIds,
+      categoryIds,
+      feedback,
+      occurrences,
+      targetDate,
+    });
   }
-  return { targetDate, requested, servings, week, dishes, feedback, preferences, rejected };
+  return { targetDate, requested, servings, week, dishes, candidates, feedback, preferences, rejected };
+}
+
+function hasEligibleExistingDish(context, meal, dishId) {
+  return recommendation.isEligibleCandidate(context.candidates, meal, dishId);
+}
+
+function invalidExistingDishSelection(generated, context) {
+  return generated.meals.some((item) => !hasEligibleExistingDish(context, item.meal, item.existingDishId));
+}
+
+function storedDishDetails(context, item) {
+  return recommendation.useStoredDishDetails(context.dishes, item);
 }
 
 function generateSuggestions(app, targetDate, meals, requestText) {
@@ -154,17 +203,18 @@ function generateSuggestions(app, targetDate, meals, requestText) {
     excludedPreferences[item.meal]
     && preference.outputContainsRequest(item, excludedPreferences[item.meal])
   ));
-  if (excludedFound) {
+  if (invalidExistingDishSelection(generated, context) || excludedFound) {
     generated = openrouter.generate(context, requestedMeals, preferences, excludedPreferences);
     excludedFound = generated.meals.some((item) => (
       excludedPreferences[item.meal]
       && preference.outputContainsRequest(item, excludedPreferences[item.meal])
     ));
-    if (excludedFound) throw new Error("invalid_ai_response");
+    if (invalidExistingDishSelection(generated, context) || excludedFound) throw new Error("invalid_ai_response");
   }
   const stored = [];
   app.runInTransaction((tx) => {
-    for (const item of generated.meals) {
+    for (const generatedItem of generated.meals) {
+      const item = storedDishDetails(context, generatedItem);
       const pending = tx.findRecordsByFilter(
         "meal_suggestions",
         "date = {:date} && meal = {:meal} && outcome = 'pending'",
@@ -231,6 +281,7 @@ function acceptSuggestion(app, suggestionId, memberId) {
     if (!dish) {
       dish = new Record(tx.findCollectionByNameOrId("dishes"));
       dish.set("name", suggestion.getString("suggested_name"));
+      dish.set("lifecycle", "regular");
       if (category) {
         dish.set("catId", category.getInt("catId"));
         dish.set("categories", [category.id]);
