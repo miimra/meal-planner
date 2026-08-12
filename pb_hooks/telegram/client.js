@@ -18,6 +18,29 @@ function request(method, payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload || {}),
   });
+  if (result.statusCode === 400 && result.json && /message is not modified/i.test(String(result.json.description || ""))) {
+    return { message_id: payload && payload.message_id };
+  }
+  if (result.statusCode < 200 || result.statusCode >= 300 || !result.json || result.json.ok !== true) {
+    throw new Error("telegram_" + method.toLowerCase() + "_failed");
+  }
+  return result.json.result;
+}
+
+function multipartRequest(method, fields, attachmentName, file) {
+  const cfg = config();
+  const form = new FormData();
+  for (const key of Object.keys(fields || {})) {
+    const value = fields[key];
+    form.append(key, typeof value === "object" ? JSON.stringify(value) : String(value));
+  }
+  form.append(attachmentName, file);
+  const result = $http.send({
+    method: "POST",
+    url: cfg.apiBase + "/bot" + cfg.token + "/" + method,
+    timeout: 60,
+    body: form,
+  });
   if (result.statusCode < 200 || result.statusCode >= 300 || !result.json || result.json.ok !== true) {
     throw new Error("telegram_" + method.toLowerCase() + "_failed");
   }
@@ -39,6 +62,28 @@ function editMessageText(chatId, messageId, value, replyMarkup) {
   };
   if (replyMarkup) body.reply_markup = replyMarkup;
   return request("editMessageText", body);
+}
+
+function editMessageCaption(chatId, messageId, caption, replyMarkup) {
+  return request("editMessageCaption", {
+    chat_id: String(chatId),
+    message_id: Number(messageId),
+    caption,
+    parse_mode: "HTML",
+    reply_markup: replyMarkup || { inline_keyboard: [] },
+  });
+}
+
+function editMessageMedia(chatId, messageId, photo, caption, replyMarkup) {
+  const media = { type: "photo", media: typeof photo === "string" ? photo : "attach://suggestion", caption, parse_mode: "HTML" };
+  const fields = {
+    chat_id: String(chatId),
+    message_id: Number(messageId),
+    media,
+    reply_markup: replyMarkup || { inline_keyboard: [] },
+  };
+  if (typeof photo === "string") return request("editMessageMedia", fields);
+  return multipartRequest("editMessageMedia", fields, "suggestion", photo);
 }
 
 function answerCallback(id, text, alert) {
@@ -69,4 +114,14 @@ function downloadPhoto(fileId, uniqueId) {
   return $filesystem.fileFromBytes(result.body, "telegram-" + safeName + ".jpg");
 }
 
-module.exports = { answerCallback, config, downloadPhoto, editMessageText, request, sendMessage, setCommands };
+module.exports = {
+  answerCallback,
+  config,
+  downloadPhoto,
+  editMessageCaption,
+  editMessageMedia,
+  editMessageText,
+  request,
+  sendMessage,
+  setCommands,
+};

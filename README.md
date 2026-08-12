@@ -6,13 +6,15 @@ application is deliberately read-only and shows only:
 - today and tomorrow, with breakfast, lunch, and dinner;
 - the complete Monday-to-Sunday plan on `/week`.
 
-Planning, feedback, and meal photos are handled through an authorized Telegram
-bot. Suggestions are generated through OpenRouter at 18:30 Europe/Amsterdam.
+Planning, feedback, household questions, and meal photos are handled through
+an authorized Telegram assistant. The daily 18:30 Europe/Amsterdam delivery
+refreshes one dashboard; meal suggestions and their food photos are generated
+only when an authorized user opens them.
 
 ## Architecture
 
 ```text
-PocketBase cron ── OpenRouter ── Telegram private/group chats
+PocketBase cron ── OpenRouter text/image ── Telegram private/group chats
        │                                │
        ├── assignments                  ├── commands and buttons
        ├── feedback                     ├── per-member feedback
@@ -31,9 +33,11 @@ configuration:
 
 ```bash
 TELEGRAM_BOT_TOKEN=
+TELEGRAM_BOT_USERNAME=moghassemi_family_assistant_bot
 TELEGRAM_WEBHOOK_SECRET=
 OPENROUTER_API_KEY=
 OPENROUTER_MODEL=
+OPENROUTER_IMAGE_MODEL=openai/gpt-5-image-mini
 PUBLIC_BASE_URL=https://meal.number34.nl
 APP_TIMEZONE=Europe/Amsterdam
 TELEGRAM_DAILY_CRON="30 18 * * *"
@@ -41,6 +45,13 @@ TELEGRAM_DAILY_CRON="30 18 * * *"
 
 `TELEGRAM_WEBHOOK_SECRET` must be a random value of at least 24 characters.
 Tokens and API keys must never be committed.
+
+For production, keep these values in
+`/home/raptor/services/meal-planner/meal-planner.env` on the printer server,
+with mode `0600`. The deployment script migrates the environment from the
+existing `meal-planner` container into that file on its first run without
+printing its contents. Set `OPENROUTER_IMAGE_MODEL` when the Telegram bot's
+lazy suggestion images should use a dedicated OpenRouter image model.
 
 ## Telegram setup
 
@@ -60,9 +71,9 @@ curl --fail-with-body \
 ```
 
 5. Add the bot to the family group.
-6. Send `/subscribe` from an authorized Telegram account in the family group.
-   This makes that chat the single daily-delivery destination and disables any
-   previously subscribed private or group chat.
+6. Open `/settings` from an authorized Telegram account in the family group
+   and enable the daily update. This makes that chat the single daily-delivery
+   destination and disables any previously subscribed private or group chat.
 
 The bot registers its supported commands with Telegram during startup, which
 makes Telegram’s command menu available without maintaining a second command
@@ -75,36 +86,30 @@ values are idempotent.
 ## Commands
 
 ```text
-/subscribe
-/unsubscribe
-/today
-/tomorrow
-/week
-/suggest [breakfast|lunch|dinner] [preference]
-/last [breakfast|lunch|dinner]
-/buy [breakfast|lunch|dinner]
-/eatout [breakfast|lunch|dinner]
-/skip [breakfast|lunch|dinner]
-/feedback [breakfast|lunch|dinner]
-/photo
-/cancel
-/help
+/home — button-driven household dashboard
+/meals — view or change meal plans
+/ask — ask a household question
+/settings — daily update and help
 ```
 
-Only commands and inline buttons are interpreted. Ordinary text is ignored.
+`/start` remains an unlisted alias for `/home`. The former meal commands are
+not alternate workflows: their behavior is available through categorized
+inline buttons.
 
-Suggestions include difficulty, preparation/cooking time, and a practical
-ingredient list. Add a free-form constraint after the meal when you want a
-specific direction; the **Another** button keeps the same constraint:
+Authorized ordinary text is read-only. Private chats answer every non-command
+text message. Groups answer only when `@moghassemi_family_assistant_bot` is
+mentioned or the message replies to the bot. Answers use Amsterdam time,
+stored assignments and feedback, household preferences, and the next two
+weeks of dinner categories. Natural-language answers can recommend a date but
+cannot alter assignments; all mutations require a button.
 
-```text
-/suggest dinner meat
-/suggest dinner seafood
-/suggest lunch very easy
-```
-
-Choosing an option marks its Telegram card as selected. Once breakfast, lunch,
-and dinner all have decisions, the bot posts one summary of tomorrow’s plan.
+Every new command, authorized question, or feedback photo receives a new bot
+response. Buttons edit the response message that contains them, so independent
+conversations never overwrite each other and button navigation never posts a
+new message. Use **Meals → Change a meal → date → meal** to choose
+**Suggest**, **Last meal**, **Buy**, **Eat out**, or **Skip**. Accepting a
+suggestion updates an existing assignment as well as a new one. **Another**
+replaces the suggestion card rather than posting another card.
 
 Breakfast, dinner, and weekend lunch are sized for two adults and one baby.
 Weekday lunch is sized for two adults because the baby is not present.
@@ -112,13 +117,18 @@ Suggestions are vegetable-forward, non-spicy, low in added salt and sugar,
 and include a dish-specific baby instruction only when the baby is eating.
 Breakfast and lunch are always very simple (easy, at most 20 minutes, and no
 more than eight ingredients). Dinner's visible rotation category is the main
-planning constraint and takes priority over incompatible free-form requests.
+planning constraint. Ingredients and baby details live behind the card's
+**Details** button so photo captions stay compact.
 
-At 18:30, PocketBase sends one message set to the currently subscribed chat,
-asks for simple feedback on today's assigned meals, and sends separate
-breakfast, lunch, and dinner suggestions for tomorrow. Dinner
-uses the existing two-week rotation category; breakfast and lunch use meal
-type, recent history, weekly assignments, and feedback.
+Opening a suggestion lazily requests one square, realistic, text-free food
+image from OpenRouter. The protected image and Telegram `file_id` are cached
+per suggestion. If generation or upload fails, the text suggestion and all of
+its buttons remain usable.
+
+At 18:30, PocketBase sends one new dashboard for that day with today's
+feedback entry point and tomorrow's planning status. Its buttons edit that
+daily dashboard in place. It does not send separate meal cards or unsolicited
+summary messages.
 
 After a feedback button is pressed, the next photo from that same user and chat
 is attached to that meal. The bot confirms the exact date, meal slot, and dish.
@@ -133,9 +143,11 @@ curl -Lo /tmp/pb.zip \
 unzip -o /tmp/pb.zip pocketbase -d /tmp/pb
 
 TELEGRAM_BOT_TOKEN=test-token \
+TELEGRAM_BOT_USERNAME=moghassemi_family_assistant_bot \
 TELEGRAM_WEBHOOK_SECRET=development-webhook-secret-12345 \
 OPENROUTER_API_KEY=test-key \
 OPENROUTER_MODEL=test/model \
+OPENROUTER_IMAGE_MODEL=openai/gpt-5-image-mini \
 /tmp/pb/pocketbase serve --http=127.0.0.1:8090
 ```
 
@@ -157,23 +169,46 @@ not call Telegram or consume paid AI tokens.
 
 ## Production
 
+The supported production deployment is the checked-in script, which packages
+the working tree, transfers it to `raptor@printer-server.local`, builds an
+ARM64 image tagged with the Git commit, and replaces the container while
+preserving the existing PocketBase volume and public webhook:
+
 ```bash
-docker build -t meal-planner .
-docker run -p 8090:8090 \
-  --env-file /path/to/meal-planner.env \
-  -v meal-planner-pb-data:/pb/pb_data \
-  meal-planner
+./scripts/deploy-printer-server.sh
 ```
 
-PocketBase serves the static export and API on port 8090. Keep the PocketBase
-`/_/` administration path protected. If Cloudflare challenges bot traffic,
-bypass interactive challenges only for the exact path:
+It backs up `meal-planner-pb-data` before each replacement, runs the container
+as `meal-planner` with `unless-stopped`, maps host port `8091` to PocketBase's
+container port `8090`, and waits for
+`http://127.0.0.1:8091/api/health`. A failed startup or health check restores
+the previous container automatically. Recent volume backups and commit-tagged
+images are retained for manual rollback. The script never connects to the
+server unless it is explicitly run.
+
+The deployed runtime uses:
+
+```text
+host: raptor@printer-server.local
+port: 8091
+volume: meal-planner-pb-data -> /pb/pb_data
+secret file: /home/raptor/services/meal-planner/meal-planner.env (0600)
+health check: curl --fail http://127.0.0.1:8091/api/health
+```
+
+PocketBase serves the static export and API on container port 8090. Keep the
+PocketBase `/_/` administration path protected. If Cloudflare challenges bot
+traffic, bypass interactive challenges only for the exact path:
 
 ```text
 /api/telegram/webhook
 ```
 
 Do not whitelist all `/api/*` routes.
+
+See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for the deployment record, rollback
+command, backup policy, and the required follow-up to rotate any credentials
+that were exposed during the original environment inspection.
 
 ## Data access
 
