@@ -60,8 +60,13 @@ curl --fail-with-body \
 ```
 
 5. Add the bot to the family group.
-6. Send `/subscribe` from an authorized Telegram account. This records the
-   group/private chat ID and enables the daily delivery there.
+6. Send `/subscribe` from an authorized Telegram account in the family group.
+   This makes that chat the single daily-delivery destination and disables any
+   previously subscribed private or group chat.
+
+The bot registers its supported commands with Telegram during startup, which
+makes Telegram’s command menu available without maintaining a second command
+list in BotFather.
 
 Unauthorized Telegram sender IDs are silently ignored. The webhook validates
 Telegram's secret header before parsing an update, and repeated `update_id`
@@ -98,6 +103,9 @@ specific direction; the **Another** button keeps the same constraint:
 /suggest lunch very easy
 ```
 
+Choosing an option marks its Telegram card as selected. Once breakfast, lunch,
+and dinner all have decisions, the bot posts one summary of tomorrow’s plan.
+
 Breakfast, dinner, and weekend lunch are sized for two adults and one baby.
 Weekday lunch is sized for two adults because the baby is not present.
 Suggestions are vegetable-forward, non-spicy, low in added salt and sugar,
@@ -106,8 +114,9 @@ Breakfast and lunch are always very simple (easy, at most 20 minutes, and no
 more than eight ingredients). Dinner's visible rotation category is the main
 planning constraint and takes priority over incompatible free-form requests.
 
-At 18:30, PocketBase asks for simple feedback on today's assigned meals and
-sends separate breakfast, lunch, and dinner suggestions for tomorrow. Dinner
+At 18:30, PocketBase sends one message set to the currently subscribed chat,
+asks for simple feedback on today's assigned meals, and sends separate
+breakfast, lunch, and dinner suggestions for tomorrow. Dinner
 uses the existing two-week rotation category; breakfast and lunch use meal
 type, recent history, weekly assignments, and feedback.
 

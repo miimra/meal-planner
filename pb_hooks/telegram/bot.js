@@ -8,6 +8,24 @@ const security = require(`${__hooks}/telegram/security.js`);
 const state = require(`${__hooks}/telegram/state.js`);
 const views = require(`${__hooks}/telegram/views.js`);
 
+const BOT_COMMANDS = [
+  { command: "start", description: "Open the meal planner help" },
+  { command: "today", description: "Show today’s meal plan" },
+  { command: "tomorrow", description: "Show tomorrow’s meal plan" },
+  { command: "week", description: "Show the Monday-to-Sunday plan" },
+  { command: "suggest", description: "Suggest tomorrow’s meals" },
+  { command: "last", description: "Reuse the last meal for a slot" },
+  { command: "buy", description: "Mark a slot as buy food" },
+  { command: "eatout", description: "Mark a slot as eating out" },
+  { command: "skip", description: "Skip a meal slot" },
+  { command: "feedback", description: "Rate one of today’s meals" },
+  { command: "photo", description: "Show the active photo meal" },
+  { command: "cancel", description: "Clear the active feedback meal" },
+  { command: "subscribe", description: "Send daily planning to this chat" },
+  { command: "unsubscribe", description: "Stop daily planning in this chat" },
+  { command: "help", description: "Show all commands" },
+];
+
 function first(app, collection, filter, params) {
   const records = app.findRecordsByFilter(collection, filter, "", 1, 0, params || {});
   return records.length ? records[0] : null;
@@ -96,6 +114,17 @@ function editSuggestion(app, destination, messageId, suggestion) {
   );
 }
 
+function registerCommands() {
+  return client.setCommands(BOT_COMMANDS);
+}
+
+function maybeSendTomorrowReport(app, destination, date, wasComplete) {
+  const tomorrow = calendar.addDays(planning.today(), 1);
+  if (date !== tomorrow || wasComplete || !planning.dayIsResolved(app, date)) return false;
+  client.sendMessage(chatId(destination), views.dayText(planning.dayValue(app, date), "Tomorrow’s plan"));
+  return true;
+}
+
 function sendFeedbackPrompt(app, destination, date, meal) {
   const assignment = planning.assignmentFor(app, date, meal);
   if (!assignment || !assignment.getString("dish")) return null;
@@ -166,7 +195,12 @@ function handleCommand(app, user, destination, message, parsed) {
     const action = parsed.command === "eatout" ? "out" : parsed.command;
     if (mealOrPicker(destination, action, meal, parsed.command === "feedback" ? today : tomorrow, "Choose a meal:")) return true;
     try {
-      performAction(app, user, destination, action, parsed.command === "feedback" ? today : tomorrow, meal, message.message_id);
+      const actionDate = parsed.command === "feedback" ? today : tomorrow;
+      const wasComplete = actionDate === tomorrow && planning.dayIsResolved(app, actionDate);
+      const result = performAction(app, destination, action, actionDate, meal);
+      if (result && !maybeSendTomorrowReport(app, destination, actionDate, wasComplete)) {
+        client.sendMessage(destinationId, result.text);
+      }
     } catch (error) {
       const failure = friendlyError(error);
       if (!failure) throw error;
@@ -192,7 +226,7 @@ function handleCommand(app, user, destination, message, parsed) {
   return false;
 }
 
-function performAction(app, user, destination, action, date, meal, messageId) {
+function performAction(app, destination, action, date, meal) {
   calendar.parseDate(date);
   calendar.assertMeal(meal);
   let text = "";
@@ -218,11 +252,11 @@ function performAction(app, user, destination, action, date, meal, messageId) {
       "How was <b>" + views.escape(dish.getString("name")) + "</b> for " + meal + "?",
       views.feedbackKeyboard(assignment),
     );
-    return;
+    return null;
   } else {
     throw new Error("invalid_action");
   }
-  client.sendMessage(chatId(destination), text);
+  return { text };
 }
 
 function handleCallback(app, user, destination, query) {
@@ -230,10 +264,20 @@ function handleCallback(app, user, destination, query) {
   if (parts[0] === "sg" && parts.length === 3) {
     const suggestion = app.findRecordById("meal_suggestions", parts[2]);
     if (parts[1] === "use") {
+      const date = suggestion.getString("date");
+      const wasComplete = planning.dayIsResolved(app, date);
       const assignment = planning.acceptSuggestion(app, suggestion.id, user.getString("member"));
-      const dish = app.findRecordById("dishes", assignment.getString("dish"));
       client.answerCallback(query.id, "Meal planned", false);
-      client.sendMessage(chatId(destination), "✅ <b>" + views.escape(dish.getString("name")) + "</b> is planned for " + assignment.getString("date") + " · " + assignment.getString("meal") + ".");
+      if (query.message && query.message.message_id) {
+        const slot = planning.slotValue(app, date, assignment.getString("meal"));
+        client.editMessageText(
+          chatId(destination),
+          query.message.message_id,
+          views.selectedSuggestionText(suggestion, slot),
+          { inline_keyboard: [] },
+        );
+      }
+      maybeSendTomorrowReport(app, destination, date, wasComplete);
       return true;
     }
     if (parts[1] === "next") {
@@ -256,8 +300,19 @@ function handleCallback(app, user, destination, query) {
   }
   if (parts[0] === "act" && parts.length === 4) {
     try {
-      performAction(app, user, destination, parts[1], parts[2], parts[3], query.message && query.message.message_id);
+      const date = parts[2];
+      const wasComplete = planning.dayIsResolved(app, date);
+      const result = performAction(app, destination, parts[1], date, parts[3]);
       client.answerCallback(query.id, "Saved", false);
+      if (result && query.message && query.message.message_id) {
+        client.editMessageText(
+          chatId(destination),
+          query.message.message_id,
+          views.selectedSlotText(planning.slotValue(app, date, parts[3]), date),
+          { inline_keyboard: [] },
+        );
+      }
+      if (result) maybeSendTomorrowReport(app, destination, date, wasComplete);
     } catch (error) {
       const failure = friendlyError(error);
       if (!failure) throw error;
@@ -356,6 +411,7 @@ module.exports = {
   handlePhoto,
   helpText,
   editSuggestion,
+  registerCommands,
   sendFeedbackPrompt,
   sendSuggestion,
 };

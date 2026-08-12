@@ -39,10 +39,25 @@ function ensureChat(app, chat, user) {
 }
 
 function subscribe(app, chatRecord, enabled) {
-  chatRecord.set("daily_enabled", Boolean(enabled));
-  chatRecord.set("active", true);
-  app.save(chatRecord);
-  return chatRecord;
+  if (!enabled) {
+    chatRecord.set("daily_enabled", false);
+    chatRecord.set("active", true);
+    app.save(chatRecord);
+    return chatRecord;
+  }
+  app.runInTransaction((tx) => {
+    const chats = tx.findRecordsByFilter("telegram_chats", "daily_enabled = true", "", 0, 0);
+    for (const chat of chats) {
+      if (chat.id === chatRecord.id) continue;
+      chat.set("daily_enabled", false);
+      tx.save(chat);
+    }
+    const current = tx.findRecordById("telegram_chats", chatRecord.id);
+    current.set("daily_enabled", true);
+    current.set("active", true);
+    tx.save(current);
+  });
+  return app.findRecordById("telegram_chats", chatRecord.id);
 }
 
 function setConversation(app, user, chat, occurrence, messageId) {

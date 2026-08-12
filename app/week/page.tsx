@@ -1,22 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   MEALS,
   addDateDays,
   amsterdamToday,
   buildDay,
   dayLabel,
+  mealHasPassed,
   mondayKey,
   type MealSlot,
 } from "../lib/plan.ts";
 import { useMealPlan } from "../lib/useMealPlan.ts";
+import { useCurrentTime } from "../lib/useCurrentTime.ts";
 
 const ICON = { breakfast: "☀️", lunch: "🥪", dinner: "🌙" } as const;
 const EMPTY = { unplanned: "Waiting", skipped: "Skipped", buy_food: "Buy food", eating_out: "Eat out", planned: "Planned", cooked: "Cooked" } as const;
 
 export default function WeekPage() {
-  const [today] = useState(() => amsterdamToday());
+  const now = useCurrentTime();
+  const today = amsterdamToday(now);
   const start = mondayKey(today);
   const end = addDateDays(start, 6);
   const { assignments, categories, dishes, error, loading, refresh } = useMealPlan(start, end);
@@ -55,7 +58,7 @@ export default function WeekPage() {
               {day.date === today && <span className="rounded-full bg-accent px-3 py-1 text-xs font-extrabold text-white">Today</span>}
             </div>
             <div className="grid gap-2.5">
-              {MEALS.map((meal) => <WeekMeal key={meal} slot={day.meals[meal]} />)}
+              {MEALS.map((meal) => <WeekMeal key={meal} date={day.date} slot={day.meals[meal]} now={now} />)}
             </div>
           </article>
         ))}
@@ -64,8 +67,9 @@ export default function WeekPage() {
   );
 }
 
-function WeekMeal({ slot }: { slot: MealSlot }) {
-  const name = slot.dish?.name || EMPTY[slot.status];
+function WeekMeal({ date, slot, now }: { date: string; slot: MealSlot; now: Date }) {
+  const expired = !slot.dish && slot.status === "unplanned" && mealHasPassed(date, slot.meal, now);
+  const name = slot.dish?.name || (expired ? "No plan selected" : EMPTY[slot.status]);
   return (
     <div className="flex min-w-0 items-center gap-3 rounded-2xl bg-bg/55 px-3 py-3">
       <span className="text-xl">{ICON[slot.meal]}</span>

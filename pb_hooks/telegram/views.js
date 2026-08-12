@@ -40,11 +40,11 @@ function weekText(week) {
   return lines.join("\n");
 }
 
-function suggestionText(suggestion, slot) {
+function suggestionCardText(suggestion, slot, selected) {
   const category = slot.category
     ? "\n🧭 <b>Main dinner category:</b> " + escape(slot.category.emoji + " " + slot.category.name + (slot.category.nameFa ? " · " + slot.category.nameFa : ""))
     : "";
-  const current = slot.dish ? "\nCurrently: " + escape(slot.dish.name) : "";
+  const current = !selected && slot.dish ? "\nCurrently: " + escape(slot.dish.name) : "";
   const request = suggestion.getString("request_text");
   const requestStatus = suggestion.getString("request_status");
   const prep = suggestion.getInt("prep_minutes");
@@ -72,11 +72,23 @@ function suggestionText(suggestion, slot) {
     for (const ingredient of ingredients) details.push("• " + escape(ingredient));
   }
   return [
-    ICONS[slot.meal] + " <b>Tomorrow’s " + LABELS[slot.meal].toLowerCase() + "</b>" + category + current,
+    ICONS[slot.meal] + " <b>Tomorrow’s " + LABELS[slot.meal].toLowerCase() + "</b>" + (selected ? " · ✅ <b>Selected</b>" : "") + category + current,
     "\n<b>" + escape(suggestion.getString("suggested_name")) + "</b>",
     escape(suggestion.getString("reason")),
     "\n" + details.join("\n"),
   ].join("\n");
+}
+
+function suggestionText(suggestion, slot) {
+  return suggestionCardText(suggestion, slot, false);
+}
+
+function selectedSuggestionText(suggestion, slot) {
+  return suggestionCardText(suggestion, slot, true);
+}
+
+function selectedSlotText(slot, date) {
+  return "✅ <b>Selected</b>\n\n" + slotLine(slot) + "\n<i>" + escape(date) + "</i>";
 }
 
 function suggestionKeyboard(suggestion) {
@@ -117,6 +129,8 @@ module.exports = {
   escape,
   feedbackKeyboard,
   mealPicker,
+  selectedSlotText,
+  selectedSuggestionText,
   slotLine,
   suggestionKeyboard,
   suggestionText,

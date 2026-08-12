@@ -20,6 +20,17 @@ routerAdd("POST", "/api/telegram/webhook", (e) => {
   return e.noContent(200);
 });
 
+$app.onServe().bindFunc((e) => {
+  e.next();
+  try {
+    const bot = require(`${__hooks}/telegram/bot.js`);
+    bot.registerCommands();
+  } catch (error) {
+    const code = String(error && error.message || "internal_error");
+    e.app.logger().error("Telegram command registration failed", "error_code", /^[a-z0-9_]+$/i.test(code) ? code : "internal_error");
+  }
+});
+
 const appTimezone = String($os.getenv("APP_TIMEZONE") || "Europe/Amsterdam");
 $app.cron().setTimezone(new Timezone(appTimezone));
 cronAdd(

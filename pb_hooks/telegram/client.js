@@ -49,6 +49,10 @@ function answerCallback(id, text, alert) {
   });
 }
 
+function setCommands(commands) {
+  return request("setMyCommands", { commands });
+}
+
 function downloadPhoto(fileId, uniqueId) {
   const cfg = config();
   const info = request("getFile", { file_id: fileId });
@@ -65,4 +69,4 @@ function downloadPhoto(fileId, uniqueId) {
   return $filesystem.fileFromBytes(result.body, "telegram-" + safeName + ".jpg");
 }
 
-module.exports = { answerCallback, config, downloadPhoto, editMessageText, request, sendMessage };
+module.exports = { answerCallback, config, downloadPhoto, editMessageText, request, sendMessage, setCommands };

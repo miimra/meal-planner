@@ -81,6 +81,31 @@ export function amsterdamToday(now = new Date()): string {
   return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
+const MEAL_CUTOFF_MINUTES: Record<MealType, number> = {
+  breakfast: 12 * 60,
+  lunch: 15 * 60,
+  dinner: 21 * 60,
+};
+
+export function amsterdamMinutes(now = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Amsterdam",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  return value("hour") * 60 + value("minute");
+}
+
+export function mealHasPassed(date: string, meal: MealType, now = new Date()): boolean {
+  const today = amsterdamToday(now);
+  if (date < today) return true;
+  if (date > today) return false;
+  return amsterdamMinutes(now) >= MEAL_CUTOFF_MINUTES[meal];
+}
+
 export function dayLabel(value: string, style: "long" | "short" = "long"): string {
   return dateFromKey(value).toLocaleDateString("en-GB", {
     weekday: style,

@@ -1,16 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   MEALS,
   addDateDays,
   amsterdamToday,
   buildDay,
   dayLabel,
+  mealHasPassed,
   type MealSlot,
   type PlanDay,
 } from "./lib/plan.ts";
 import { useMealPlan } from "./lib/useMealPlan.ts";
+import { useCurrentTime } from "./lib/useCurrentTime.ts";
 
 const MEAL_META = {
   breakfast: { icon: "☀️", label: "Breakfast", tint: "#fff5cc" },
@@ -28,7 +30,8 @@ const SPECIAL = {
 } as const;
 
 export default function HomePage() {
-  const [today] = useState(() => amsterdamToday());
+  const now = useCurrentTime();
+  const today = amsterdamToday(now);
   const tomorrow = addDateDays(today, 1);
   const { assignments, categories, dishes, error, loading, refresh } = useMealPlan(today, tomorrow);
   const days = useMemo(
@@ -57,13 +60,13 @@ export default function HomePage() {
         <p className="mt-3 max-w-sm text-base text-ink-soft">The whole plan, without the noise.</p>
       </header>
 
-      <DaySection day={days[0]} title="Today" featured />
-      <DaySection day={days[1]} title="Tomorrow" />
+      <DaySection day={days[0]} title="Today" now={now} featured />
+      <DaySection day={days[1]} title="Tomorrow" now={now} />
     </main>
   );
 }
 
-function DaySection({ day, title, featured = false }: { day: PlanDay; title: string; featured?: boolean }) {
+function DaySection({ day, title, now, featured = false }: { day: PlanDay; title: string; now: Date; featured?: boolean }) {
   return (
     <section>
       <div className="mb-4 flex items-end justify-between gap-4 px-1">
@@ -74,19 +77,22 @@ function DaySection({ day, title, featured = false }: { day: PlanDay; title: str
         {featured && <span className="rounded-full bg-accent-soft px-3 py-1.5 text-xs font-extrabold text-accent-ink">Right now</span>}
       </div>
       <div className="grid gap-4">
-        {MEALS.map((meal) => <MealCard key={meal} slot={day.meals[meal]} featured={featured && meal === "dinner"} />)}
+        {MEALS.map((meal) => (
+          <MealCard key={meal} date={day.date} slot={day.meals[meal]} now={now} featured={featured && meal === "dinner"} />
+        ))}
       </div>
     </section>
   );
 }
 
-function MealCard({ slot, featured }: { slot: MealSlot; featured: boolean }) {
+function MealCard({ date, slot, now, featured }: { date: string; slot: MealSlot; now: Date; featured: boolean }) {
   const meta = MEAL_META[slot.meal];
   const special = SPECIAL[slot.status];
-  const title = slot.dish?.name || special.title;
+  const expired = !slot.dish && slot.status === "unplanned" && mealHasPassed(date, slot.meal, now);
+  const title = slot.dish?.name || (expired ? "No plan selected" : special.title);
   const detail = slot.dish
     ? slot.status === "cooked" ? "Made today" : slot.selectionSource === "last_meal" ? "A recent favourite" : "Your exact meal plan"
-    : special.detail;
+    : expired ? "The decision time for this meal has passed." : special.detail;
 
   return (
     <article

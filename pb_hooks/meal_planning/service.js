@@ -83,6 +83,13 @@ function dayValue(app, date) {
   return { date, meals };
 }
 
+function dayIsResolved(app, date) {
+  return calendar.MEALS.every((meal) => {
+    const slot = slotValue(app, date, meal);
+    return Boolean(slot.dish) || ["buy_food", "eating_out", "skipped"].indexOf(slot.status) !== -1;
+  });
+}
+
 function weekValue(app, date) {
   const bounds = calendar.weekBounds(date);
   const days = [];
@@ -328,6 +335,7 @@ function saveFeedback(app, occurrenceId, memberId, rating) {
 module.exports = {
   acceptSuggestion,
   assignmentFor,
+  dayIsResolved,
   dayValue,
   effectiveCategory,
   ensureOccurrence,

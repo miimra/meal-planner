@@ -189,6 +189,16 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
 
   try { await waitForServer(baseUrl, child); } catch (error) { assert.fail(error.message + "\n" + logs); }
 
+  await t.test("startup registers the Telegram command menu", () => {
+    const registration = mock.telegram.find((call) => call.method === "setMyCommands");
+    assert.ok(registration, JSON.stringify(mock.telegram) + "\n" + logs);
+    const names = registration.body.commands.map((item) => item.command);
+    assert.ok(names.includes("start"));
+    assert.ok(names.includes("suggest"));
+    assert.ok(names.includes("subscribe"));
+    assert.ok(names.includes("help"));
+  });
+
   const authResponse = await fetch(baseUrl + "/api/collections/_superusers/auth-with-password", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -228,9 +238,10 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
   assert.equal(wrongSecret.status, 404, (await wrongSecret.text()) + "\n" + logs);
 
   await t.test("unauthorized users receive no response", async () => {
+    const before = mock.telegram.length;
     const response = await webhook({ update_id: 2, message: { message_id: 1, from: { id: 999 }, chat: { id: 999, type: "private" }, text: "/start" } });
     assert.equal(response.status, 200);
-    assert.equal(mock.telegram.length, 0);
+    assert.equal(mock.telegram.length, before);
     assert.equal((await list("telegram_updates")).find((item) => item.update_id === "2").status, "ignored");
   });
 
@@ -267,6 +278,25 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
     });
     assert.equal(mock.telegram.length, before + 1);
     assert.ok((await list("telegram_chats")).find((chat) => chat.chat_id === "111" && chat.type === "private"));
+  });
+
+  await t.test("the latest subscription is the only daily destination", async () => {
+    await webhook({
+      update_id: 33,
+      message: { message_id: 22, from: { id: 111 }, chat: { id: 111, type: "private", first_name: "Amir" }, text: "/subscribe" },
+    });
+    let chats = await list("telegram_chats");
+    assert.equal(chats.find((chat) => chat.chat_id === "111").daily_enabled, true);
+    assert.equal(chats.find((chat) => chat.chat_id === "-100123").daily_enabled, false);
+
+    await webhook({
+      update_id: 34,
+      message: { message_id: 23, from: { id: 222 }, chat: groupChat, text: "/subscribe" },
+    });
+    chats = await list("telegram_chats");
+    assert.equal(chats.find((chat) => chat.chat_id === "111").daily_enabled, false);
+    assert.equal(chats.find((chat) => chat.chat_id === "-100123").daily_enabled, true);
+    assert.equal(chats.filter((chat) => chat.daily_enabled).length, 1);
   });
 
   const today = amsterdamDate();
@@ -319,6 +349,8 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
   });
 
   await t.test("accept, buy food, and eat out actions upsert tomorrow", async () => {
+    const sendsBefore = mock.telegram.filter((call) => call.method === "sendMessage").length;
+    const editsBefore = mock.telegram.filter((call) => call.method === "editMessageText").length;
     await webhook({
       update_id: 5,
       callback_query: { id: "callback-use", from: { id: 111 }, data: `sg:use:${suggestion.id}`, message: { message_id: 4, chat: groupChat } },
@@ -341,6 +373,17 @@ test("Telegram bot PocketBase integration", { timeout: 45_000 }, async (t) => {
     assert.deepEqual(acceptedDish.ingredients, ["500 g main ingredient", "1 onion", "2 tbsp olive oil"]);
     assert.ok(assignments.find((item) => item.date === tomorrow && item.meal === "lunch" && item.status === "buy_food" && !item.dish));
     assert.ok(assignments.find((item) => item.date === tomorrow && item.meal === "breakfast" && item.status === "eating_out" && !item.dish));
+
+    const edits = mock.telegram.filter((call) => call.method === "editMessageText").slice(editsBefore);
+    assert.equal(edits.length, 3);
+    assert.ok(edits.every((call) => /Selected/.test(call.body.text)));
+    assert.ok(edits.every((call) => call.body.reply_markup.inline_keyboard.length === 0));
+    const sends = mock.telegram.filter((call) => call.method === "sendMessage").slice(sendsBefore);
+    assert.equal(sends.length, 1, JSON.stringify(sends));
+    assert.match(sends[0].body.text, /Tomorrow’s plan/);
+    assert.match(sends[0].body.text, /very easy meat skillet/);
+    assert.match(sends[0].body.text, /Buy food/);
+    assert.match(sends[0].body.text, /Eat out/);
   });
 
   await t.test("an incompatible dinner request is excluded because category wins", async () => {
