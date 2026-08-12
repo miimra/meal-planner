@@ -122,8 +122,11 @@ planning constraint. Ingredients and baby details live behind the card's
 
 Opening a suggestion lazily requests one square, realistic, text-free food
 image from OpenRouter. The protected image and Telegram `file_id` are cached
-per suggestion. If generation or upload fails, the text suggestion and all of
-its buttons remain usable.
+per suggestion. The photo is embedded in Telegram's editable rich-message
+suggestion view: **Another** replaces it, while accepting, opening details, or
+navigating away edits the same message back to text and removes the photo. If
+generation or upload fails, the text suggestion and all of its buttons remain
+usable.
 
 At 18:30, PocketBase sends one new dashboard for that day with today's
 feedback entry point and tomorrow's planning status. Its buttons edit that

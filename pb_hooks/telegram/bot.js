@@ -112,8 +112,22 @@ function helpText() {
 }
 
 function telegramPhotoId(result) {
-  const photos = result && result.photo;
-  return Array.isArray(photos) && photos.length ? String(photos[photos.length - 1].file_id || "") : "";
+  let found = "";
+  function visit(value, key) {
+    if (!value || found) return;
+    if (key === "photo" && Array.isArray(value)) {
+      for (let index = value.length - 1; index >= 0; index -= 1) {
+        if (value[index] && value[index].file_id) {
+          found = String(value[index].file_id);
+          return;
+        }
+      }
+    }
+    if (typeof value !== "object") return;
+    for (const childKey of Object.keys(value)) visit(value[childKey], childKey);
+  }
+  visit(result, "");
+  return found;
 }
 
 function storedImageFile(app, suggestion) {
@@ -165,7 +179,7 @@ function showSuggestion(app, destination, message, suggestion, selected) {
   if (image && image.photo) {
     let result;
     try {
-      result = client.editMessageMedia(chatId(destination), message.message_id, image.photo, caption, keyboard);
+      result = client.editMessageRichPhoto(chatId(destination), message.message_id, image.photo, caption, keyboard);
     } finally {
       if (image.close) image.close();
     }
@@ -303,9 +317,8 @@ function handleCallback(app, user, destination, query) {
         return true;
       }
       if (parts[1] === "card") {
-        const slot = planning.slotValue(app, suggestion.getString("date"), suggestion.getString("meal"));
         const selected = suggestion.getString("outcome") === "accepted";
-        editPanel(destination, query.message, views.suggestionCaption(suggestion, slot, selected), views.suggestionKeyboard(suggestion, selected));
+        showSuggestion(app, destination, query.message, suggestion, selected);
         client.answerCallback(query.id, "", false);
         return true;
       }

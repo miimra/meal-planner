@@ -86,6 +86,30 @@ function editMessageMedia(chatId, messageId, photo, caption, replyMarkup) {
   return multipartRequest("editMessageMedia", fields, "suggestion", photo);
 }
 
+function richParagraphs(value) {
+  return String(value || "").split(/\n\s*\n/).map((paragraph) => (
+    "<p>" + paragraph.replace(/\n/g, " ") + "</p>"
+  )).join("");
+}
+
+function editMessageRichPhoto(chatId, messageId, photo, text, replyMarkup) {
+  const media = {
+    id: "suggestion",
+    media: { type: "photo", media: typeof photo === "string" ? photo : "attach://suggestion" },
+  };
+  const fields = {
+    chat_id: String(chatId),
+    message_id: Number(messageId),
+    rich_message: {
+      html: '<img src="tg://photo?id=suggestion"/>' + richParagraphs(text),
+      media: [media],
+    },
+    reply_markup: replyMarkup || { inline_keyboard: [] },
+  };
+  if (typeof photo === "string") return request("editMessageText", fields);
+  return multipartRequest("editMessageText", fields, "suggestion", photo);
+}
+
 function answerCallback(id, text, alert) {
   return request("answerCallbackQuery", {
     callback_query_id: String(id),
@@ -120,6 +144,7 @@ module.exports = {
   downloadPhoto,
   editMessageCaption,
   editMessageMedia,
+  editMessageRichPhoto,
   editMessageText,
   request,
   sendMessage,

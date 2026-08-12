@@ -110,7 +110,17 @@ async function startMockServer() {
       telegram.push(call);
       let result = true;
       if (method === "sendMessage") result = { message_id: ++messageId, chat: { id: body.chat_id } };
-      if (method === "editMessageText" || method === "editMessageCaption") result = { message_id: body.message_id, chat: { id: body.chat_id } };
+      if (method === "editMessageText" || method === "editMessageCaption") {
+        const multipartMessageId = Number((bodyText.match(/name="message_id"\r\n\r\n(\d+)/) || [])[1]) || 0;
+        result = {
+          message_id: call.multipart ? multipartMessageId : body.message_id,
+          chat: { id: call.multipart ? -100123 : body.chat_id },
+        };
+        if (call.multipart && /name="rich_message"/.test(bodyText)) {
+          imageSequence += 1;
+          result.rich_message = { blocks: [{ photo: [{ file_id: "telegram-image-" + imageSequence }] }] };
+        }
+      }
       if (method === "sendPhoto") {
         imageSequence += 1;
         result = { message_id: ++messageId, photo: [{ file_id: "telegram-image-" + imageSequence }] };
@@ -317,7 +327,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
   });
 
   let firstSuggestion;
-  await t.test("suggestion opens lazily as a multipart photo card and caches its image", async () => {
+  await t.test("suggestion opens lazily as rich embedded media and caches its image", async () => {
     const imagesBefore = mock.imageRequests.length;
     const suggestionUpdateId = nextUpdate();
     await webhook({ update_id: suggestionUpdateId, callback_query: { id: "suggest", from: { id: 111 }, data: `do:suggest:${tomorrow}:lunch`, message: { message_id: 101, chat: groupChat } } });
@@ -325,46 +335,62 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.equal(mock.imageRequests.at(-1).aspect_ratio, "1:1");
     assert.equal(mock.imageRequests.at(-1).output_format, "jpeg");
     assert.match(mock.imageRequests.at(-1).prompt, /no text/i);
-    const upload = mock.telegram.filter((call) => call.method === "editMessageMedia").at(-1);
+    const upload = mock.telegram.filter((call) => call.method === "editMessageText" && call.multipart).at(-1);
     assert.ok(upload, JSON.stringify((await list("telegram_updates")).find((item) => item.update_id === String(suggestionUpdateId))) + "\n" + JSON.stringify(mock.telegram.slice(-8)) + "\n" + logs);
     assert.equal(upload.multipart, true);
     assert.match(upload.raw, /suggestion/);
+    assert.match(upload.raw, /rich_message/);
     assert.match(upload.raw, /name="message_id"\r\n\r\n101/);
     firstSuggestion = (await list("meal_suggestions")).find((item) => item.date === tomorrow && item.meal === "lunch" && item.outcome === "pending");
     assert.ok(firstSuggestion.generated_image);
     assert.equal(firstSuggestion.generated_image_model, "test/image-model");
     assert.ok(firstSuggestion.telegram_image_file_id);
+
+    const sendsBeforeDetails = mock.telegram.filter((call) => call.method === "sendMessage").length;
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "details", from: { id: 111 }, data: `sg:details:${firstSuggestion.id}`, message: { message_id: 101, chat: groupChat, rich_message: {} } } });
+    const detailsEdit = mock.telegram.filter((call) => call.method === "editMessageText" && !call.multipart).at(-1);
+    assert.equal(detailsEdit.body.message_id, 101);
+    assert.match(detailsEdit.body.text, /Suggestion details/);
+    assert.equal(detailsEdit.body.rich_message, undefined, "leaving the suggestion view must remove its embedded image");
+    assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBeforeDetails);
+
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "card", from: { id: 111 }, data: `sg:card:${firstSuggestion.id}`, message: { message_id: 101, chat: groupChat } } });
+    const restored = mock.telegram.filter((call) => call.method === "editMessageText" && call.body && call.body.rich_message).at(-1);
+    assert.equal(restored.body.message_id, 101);
+    assert.equal(restored.body.rich_message.media[0].media.media, firstSuggestion.telegram_image_file_id);
   });
 
   let secondSuggestion;
   await t.test("an accepted meal can be changed without creating callback response messages", async () => {
     const firstImageCount = mock.imageRequests.length;
     const sendsBeforeAccept = mock.telegram.filter((call) => call.method === "sendMessage").length;
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "use-one", from: { id: 111 }, data: `sg:use:${firstSuggestion.id}`, message: { message_id: 101, chat: groupChat, photo: [{ file_id: firstSuggestion.telegram_image_file_id }] } } });
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "use-one", from: { id: 111 }, data: `sg:use:${firstSuggestion.id}`, message: { message_id: 101, chat: groupChat, rich_message: {} } } });
     let assignment = (await list("meal_assignments")).find((item) => item.date === tomorrow && item.meal === "lunch");
     const firstDish = assignment.dish;
     assert.ok(firstDish);
     assert.equal(mock.imageRequests.length, firstImageCount, "accepting a cached card must not regenerate its image");
-    assert.equal(mock.telegram.filter((call) => call.method === "editMessageCaption").at(-1).body.message_id, 101);
+    const acceptedEdit = mock.telegram.filter((call) => call.method === "editMessageText" && !call.multipart).at(-1);
+    assert.equal(acceptedEdit.body.message_id, 101);
+    assert.equal(acceptedEdit.body.rich_message, undefined, "accepting must remove the suggestion image");
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBeforeAccept);
 
     await webhook({ update_id: nextUpdate(), callback_query: { id: "suggest-two", from: { id: 111 }, data: `do:suggest:${tomorrow}:lunch`, message: { message_id: 702, chat: groupChat } } });
     secondSuggestion = (await list("meal_suggestions")).find((item) => item.date === tomorrow && item.meal === "lunch" && item.outcome === "pending");
     assert.notEqual(secondSuggestion.id, firstSuggestion.id);
-    const mediaEdit = mock.telegram.filter((call) => call.method === "editMessageMedia").at(-1);
+    const mediaEdit = mock.telegram.filter((call) => call.method === "editMessageText" && call.multipart).at(-1);
     assert.ok(mediaEdit);
     assert.equal(mediaEdit.multipart, true);
     assert.match(mediaEdit.raw, /name="message_id"\r\n\r\n702/);
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "use-two", from: { id: 111 }, data: `sg:use:${secondSuggestion.id}`, message: { message_id: 702, chat: groupChat, photo: [{ file_id: secondSuggestion.telegram_image_file_id }] } } });
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "use-two", from: { id: 111 }, data: `sg:use:${secondSuggestion.id}`, message: { message_id: 702, chat: groupChat, rich_message: {} } } });
     assignment = (await list("meal_assignments")).find((item) => item.date === tomorrow && item.meal === "lunch");
     assert.notEqual(assignment.dish, firstDish);
     assert.match((await list("dishes")).find((item) => item.id === assignment.dish).name, /suggestion 2/);
   });
 
-  await t.test("Another replaces media and text-only fallback remains usable when image generation fails", async () => {
+  await t.test("Another replaces embedded media and text-only fallback remains usable when image generation fails", async () => {
     const sendsBeforeAnother = mock.telegram.filter((call) => call.method === "sendMessage").length;
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "another", from: { id: 111 }, data: `sg:next:${secondSuggestion.id}`, message: { message_id: 702, chat: groupChat, photo: [{ file_id: secondSuggestion.telegram_image_file_id }] } } });
-    assert.ok(mock.telegram.filter((call) => call.method === "editMessageMedia").length >= 2);
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "another", from: { id: 111 }, data: `sg:next:${secondSuggestion.id}`, message: { message_id: 702, chat: groupChat, rich_message: {} } } });
+    assert.ok(mock.telegram.filter((call) => call.method === "editMessageText" && (call.multipart || call.body && call.body.rich_message)).length >= 3);
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBeforeAnother);
 
     mock.failNextImage();
