@@ -11,8 +11,8 @@ complete local test suite and production build passed.
 | Field | Value |
 | --- | --- |
 | Status | Healthy and running |
-| Image tag | `meal-planner:6c162a244adc` (`sha256:51620bedc51aefe724c1a9d8418cbc52e4950787fa8d1e6f46a339518d411bfe`) |
-| Deployment date | 2026-08-12 19:58 UTC |
+| Image tag | `meal-planner:b39504993bbb` (`sha256:d9679f7a025bfb1c1f83111ab121f32d25ad6ebdd22c5de91aa5518172695e69`) |
+| Deployment date | 2026-08-12 21:44 UTC |
 | Host | `raptor@printer-server.local` |
 | Host port | `8091` |
 | Container port | `8090` |
@@ -26,11 +26,12 @@ Post-deployment verification confirmed:
 - local and public `/api/health`, plus the public site, return successfully;
 - the container is running with `unless-stopped`, host port `8091`, and the
   existing `meal-planner-pb-data:/pb/pb_data` mount;
-- the migration history contains
-  `1786632000_household_assistant_telegram_cards.js`, and all five new schema
-  fields are present;
+- the migration history ends with
+  `1786800000_message_scoped_telegram_ui.js`; the three protected suggestion
+  image/cache fields are present and both obsolete per-chat message pointers
+  are absent;
 - existing public data remains present (12 categories and existing meal
-  assignments), and a pre-deployment volume backup was retained;
+  assignments), and two pre-deployment volume backups were retained;
 - Telegram reports exactly `home`, `meals`, `ask`, and `settings`, with the
   existing webhook URL, the expected update types, and zero pending updates.
   Its last reported delivery error was a historical 502 from
