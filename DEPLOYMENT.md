@@ -3,22 +3,19 @@
 The production service runs on `raptor@printer-server.local` as the Docker
 container `meal-planner`. Deployments are performed by
 [`scripts/deploy-printer-server.sh`](./scripts/deploy-printer-server.sh).
-The household-assistant release below was deployed with the script after the
-complete local test suite and production build passed.
-
-The recipe-link-import release adds the private `recipe_imports` collection,
-confirmed `want_to_try` dish metadata, secure public-page ingestion, and
-category/feedback-aware recommendation candidates. Its deployment record is
-updated after the production image is replaced; no verification step sends a
-family-chat message.
+The recipe-link-import release below was deployed with the script after the
+complete local test suite and production build passed. It adds the private
+`recipe_imports` collection, confirmed `want_to_try` dish metadata, secure
+public-page ingestion, and category/feedback-aware recommendation candidates.
+No verification step sent a family-chat message.
 
 ## Recorded deployment
 
 | Field | Value |
 | --- | --- |
 | Status | Healthy and running |
-| Image tag | `meal-planner:b39504993bbb` (`sha256:d9679f7a025bfb1c1f83111ab121f32d25ad6ebdd22c5de91aa5518172695e69`) |
-| Deployment date | 2026-08-12 21:44 UTC |
+| Image tag | `meal-planner:3c17658939ae` (`sha256:aef45430151deb0cfb4cd3067cb1e1befda5341dff6e7219593d37524db3e24e`) |
+| Deployment date | 2026-08-12 22:26 UTC |
 | Host | `raptor@printer-server.local` |
 | Host port | `8091` |
 | Container port | `8090` |
@@ -32,16 +29,18 @@ Post-deployment verification confirmed:
 - local and public `/api/health`, plus the public site, return successfully;
 - the container is running with `unless-stopped`, host port `8091`, and the
   existing `meal-planner-pb-data:/pb/pb_data` mount;
-- the migration history ends with
-  `1786800000_message_scoped_telegram_ui.js`; the three protected suggestion
-  image/cache fields are present and both obsolete per-chat message pointers
-  are absent;
-- existing public data remains present (12 categories and existing meal
-  assignments), and two pre-deployment volume backups were retained;
+- the migration history ends with `1786886400_recipe_link_imports.js`; the
+  private import collection and confirmed-dish lifecycle/source fields are
+  present, and the migration's down path passed locally;
+- existing public data remains present (12 categories, 44 dishes, and existing
+  meal assignments), and four volume backups were retained;
 - Telegram reports exactly `home`, `meals`, `ask`, and `settings`, with the
   existing webhook URL, the expected update types, and zero pending updates.
   Its last reported delivery error was a historical 502 from
   2026-08-11 20:24:45 UTC, before this deployment.
+- the protected runtime env file remains mode `0600`; `YOUTUBE_API_KEY` is not
+  configured, so YouTube imports currently use public-page metadata as a
+  best-effort fallback while generic public recipe ingestion remains active.
 
 No test or verification step sent a family-chat message. Do not copy the env
 file or any secret values into this record, shell history, or Git.
