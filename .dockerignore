@@ -6,4 +6,6 @@ Dockerfile
 pb_data
 out
 .env*
+backups
+**/*.env
 pocketbase
