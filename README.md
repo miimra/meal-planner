@@ -33,7 +33,7 @@ configuration:
 
 ```bash
 TELEGRAM_BOT_TOKEN=
-TELEGRAM_BOT_USERNAME=moghassemi_family_assistant_bot
+TELEGRAM_BOT_USERNAME=your_bot_username
 TELEGRAM_WEBHOOK_SECRET=
 OPENROUTER_API_KEY=
 OPENROUTER_MODEL=
@@ -100,8 +100,8 @@ not alternate workflows: their behavior is available through categorized
 inline buttons.
 
 Authorized ordinary text is read-only. Private chats answer every non-command
-text message. Groups answer only when `@moghassemi_family_assistant_bot` is
-mentioned or the message replies to the bot. Answers use Amsterdam time,
+text message. Groups answer only when the username configured in
+`TELEGRAM_BOT_USERNAME` is mentioned or the message replies to the bot. Answers use Amsterdam time,
 stored assignments and feedback, household preferences, and the next two
 weeks of dinner categories. Natural-language answers can recommend a date but
 cannot alter assignments; all mutations require a button.
@@ -201,7 +201,8 @@ external `meal-planner-pb-data` volume, builds the Git commit through
 `docker-compose.yml`, recreates the container, and waits for
 `http://127.0.0.1:8091/api/health`. If startup fails, it restores the image
 that was running before deployment. The latest eight volume backups remain in
-`~/meal-planner/backups`.
+`~/meal-planner/backups`. After health passes it also registers the exact four
+Telegram commands and secure webhook for the token currently in `.env`.
 
 The deployed runtime uses:
 

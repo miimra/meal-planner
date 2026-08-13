@@ -238,7 +238,7 @@ function handleCommand(app, user, destination, message, parsed) {
   }
   if (parsed.command === "ask") {
     const question = (parsed.rawArgs || []).join(" ").trim();
-    if (!question) sendPanel(destination, views.askText(), { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] });
+    if (!question) sendPanel(destination, views.askText(commands.botUsername()), { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] });
     else sendPanel(destination, views.escape(assistant.answer(app, question)), { inline_keyboard: [[{ text: "💬 Ask another", callback_data: "nav:ask" }, { text: "🏠 Home", callback_data: "nav:home" }]] });
     return true;
   }
@@ -250,7 +250,7 @@ function handleNavigation(app, destination, message, parts) {
   const tomorrow = calendar.addDays(today, 1);
   if (parts[1] === "home") return editHome(app, destination, message);
   if (parts[1] === "meals") return editPanel(destination, message, views.mealsText(), views.mealsKeyboard(today, tomorrow));
-  if (parts[1] === "ask") return editPanel(destination, message, views.askText(), { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] });
+  if (parts[1] === "ask") return editPanel(destination, message, views.askText(commands.botUsername()), { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] });
   if (parts[1] === "settings") return editPanel(destination, message, views.settingsText(destination.getBool("daily_enabled")), views.settingsKeyboard(destination.getBool("daily_enabled")));
   if (parts[1] === "change") return editPanel(destination, message, "✏️ <b>Choose a date</b>", views.dateKeyboard(today));
   if (parts[1] === "day" && parts[2]) return editPanel(destination, message, views.dayText(planning.dayValue(app, parts[2]), parts[2] === today ? "Today" : parts[2] === tomorrow ? "Tomorrow" : "Meal plan"), views.dayKeyboard(parts[2]));

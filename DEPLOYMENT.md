@@ -28,7 +28,9 @@ The script performs a fast-forward-only pull from `origin/master`, protects
 `.env` with mode `0600`, backs up the PocketBase volume, builds the exact Git
 commit, and recreates the service with Docker Compose. It retains the newest
 eight volume backups. A failed Compose start or health check restores the
-previous image as `meal-planner:rollback`.
+previous image as `meal-planner:rollback`. After the application is healthy,
+the script registers Telegram's four commands and webhook using the current
+`.env`, then tags the verified image as `meal-planner:latest`.
 
 Changing `.env` requires running `./deploy.sh` again because restarting an
 existing Docker container does not reload its environment.

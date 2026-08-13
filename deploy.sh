@@ -15,6 +15,17 @@ docker compose version >/dev/null 2>&1 || { echo "Docker Compose v2 is required"
 [[ -f .env ]] || { echo "Create $root/.env before deploying" >&2; exit 1; }
 chmod 600 .env
 
+env_value() {
+  awk -F= -v key="$1" '$1 == key { print substr($0, index($0, "=") + 1); exit }' .env
+}
+
+telegram_token="$(env_value TELEGRAM_BOT_TOKEN)"
+telegram_secret="$(env_value TELEGRAM_WEBHOOK_SECRET)"
+public_base="$(env_value PUBLIC_BASE_URL)"
+public_base="${public_base:-https://meal.number34.nl}"
+[[ -n "$telegram_token" ]] || { echo "TELEGRAM_BOT_TOKEN is missing from .env" >&2; exit 1; }
+[[ ${#telegram_secret} -ge 24 ]] || { echo "TELEGRAM_WEBHOOK_SECRET must contain at least 24 characters" >&2; exit 1; }
+
 git checkout master
 git pull --ff-only origin master
 commit="$(git rev-parse --short=12 HEAD)"
@@ -65,5 +76,18 @@ if [[ "$healthy" != true ]]; then
   exit 1
 fi
 
+commands='[{"command":"home","description":"Open the household dashboard"},{"command":"meals","description":"View or change meal plans"},{"command":"ask","description":"Ask a household question"},{"command":"settings","description":"Daily updates and help"}]'
+curl --fail --silent --show-error --output /dev/null \
+  --request POST "https://api.telegram.org/bot${telegram_token}/setMyCommands" \
+  --data-urlencode "commands=$commands"
+curl --fail --silent --show-error --output /dev/null \
+  --request POST "https://api.telegram.org/bot${telegram_token}/setWebhook" \
+  --data-urlencode "url=${public_base%/}/api/telegram/webhook" \
+  --data-urlencode "secret_token=$telegram_secret" \
+  --data-urlencode 'allowed_updates=["message","callback_query"]'
+
+docker tag "$image" meal-planner:latest
+
 echo "Deployed $image from master"
 echo "Health check passed: http://127.0.0.1:8091/api/health"
+echo "Telegram commands and webhook registered"

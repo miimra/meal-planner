@@ -259,8 +259,9 @@ function settingsKeyboard(enabled) {
   ] };
 }
 
-function askText() {
-  return "💬 <b>Ask the household assistant</b>\n\nSend your question as ordinary text. In a group, mention <code>@moghassemi_family_assistant_bot</code> or reply to one of my messages.\n\nI can read plans, preferences, feedback, and the next two weeks of dinner categories. Changes still require buttons.";
+function askText(botUsername) {
+  const mention = String(botUsername || "the bot").replace(/^@/, "");
+  return "💬 <b>Ask the household assistant</b>\n\nSend your question as ordinary text. In a group, mention <code>@" + escape(mention) + "</code> or reply to one of my messages.\n\nI can read plans, preferences, feedback, and the next two weeks of dinner categories. Changes still require buttons.";
 }
 
 function suggestionCaption(suggestion, slot, selected) {
