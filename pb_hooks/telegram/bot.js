@@ -4,6 +4,7 @@ const calendar = require(`${__hooks}/meal_planning/calendar.js`);
 const planning = require(`${__hooks}/meal_planning/service.js`);
 const imageGenerator = require(`${__hooks}/openrouter/image.js`);
 const assistant = require(`${__hooks}/telegram/assistant.js`);
+const activity = require(`${__hooks}/telegram/activity.js`);
 const client = require(`${__hooks}/telegram/client.js`);
 const commands = require(`${__hooks}/telegram/commands.js`);
 const security = require(`${__hooks}/telegram/security.js`);
@@ -68,8 +69,8 @@ function chatId(record) {
   return record.getString("chat_id");
 }
 
-function sendPanel(destination, text, keyboard) {
-  return client.sendMessage(chatId(destination), text, keyboard);
+function sendPanel(destination, text, keyboard, replyToMessageId) {
+  return client.sendMessage(chatId(destination), text, keyboard, replyToMessageId);
 }
 
 function panelTextForMedia(text) {
@@ -98,9 +99,9 @@ function homeView(app, destination) {
   };
 }
 
-function sendHome(app, destination) {
+function sendHome(app, destination, replyToMessageId) {
   const view = homeView(app, destination);
-  return sendPanel(destination, view.text, view.keyboard);
+  return sendPanel(destination, view.text, view.keyboard, replyToMessageId);
 }
 
 function editHome(app, destination, message) {
@@ -225,21 +226,21 @@ function handleCommand(app, user, destination, message, parsed) {
   const today = planning.today();
   const tomorrow = calendar.addDays(today, 1);
   if (parsed.command === "start" || parsed.command === "home") {
-    sendHome(app, destination);
+    sendHome(app, destination, message.message_id);
     return true;
   }
   if (parsed.command === "meals") {
-    sendPanel(destination, views.mealsText(), views.mealsKeyboard(today, tomorrow));
+    sendPanel(destination, views.mealsText(), views.mealsKeyboard(today, tomorrow), message.message_id);
     return true;
   }
   if (parsed.command === "settings") {
-    sendPanel(destination, views.settingsText(destination.getBool("daily_enabled")), views.settingsKeyboard(destination.getBool("daily_enabled")));
+    sendPanel(destination, views.settingsText(destination.getBool("daily_enabled")), views.settingsKeyboard(destination.getBool("daily_enabled")), message.message_id);
     return true;
   }
   if (parsed.command === "ask") {
     const question = (parsed.rawArgs || []).join(" ").trim();
-    if (!question) sendPanel(destination, views.askText(commands.botUsername()), { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] });
-    else sendPanel(destination, views.escape(assistant.answer(app, question)), { inline_keyboard: [[{ text: "💬 Ask another", callback_data: "nav:ask" }, { text: "🏠 Home", callback_data: "nav:home" }]] });
+    if (!question) sendPanel(destination, views.askText(commands.botUsername()), { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] }, message.message_id);
+    else sendPanel(destination, views.escape(assistant.answer(app, question)), { inline_keyboard: [[{ text: "💬 Ask another", callback_data: "nav:ask" }, { text: "🏠 Home", callback_data: "nav:home" }]] }, message.message_id);
     return true;
   }
   return false;
@@ -427,6 +428,7 @@ function handleCallback(app, user, destination, query) {
     const failure = friendlyError(error);
     if (!failure) throw error;
     client.answerCallback(query.id, failure, true);
+    query._activityAction = "rejected button action: " + failure;
     return true;
   }
   return false;
@@ -457,7 +459,7 @@ function handlePhoto(app, user, destination, message) {
   }
   state.clearConversation(app, user, destination);
   const dish = app.findRecordById("dishes", occurrence.getString("dish"));
-  sendPanel(destination, "📷 Photo saved for <b>" + views.escape(occurrence.getString("date") + " · " + occurrence.getString("meal") + ": " + dish.getString("name")) + "</b>.", { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] });
+  sendPanel(destination, "📷 Photo saved for <b>" + views.escape(occurrence.getString("date") + " · " + occurrence.getString("meal") + ": " + dish.getString("name")) + "</b>.", { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] }, message.message_id);
   return true;
 }
 
@@ -466,11 +468,12 @@ function handleQuestion(app, destination, message) {
   if (question === null) return false;
   try {
     const answer = assistant.answer(app, question);
-    sendPanel(destination, views.escape(answer), { inline_keyboard: [[{ text: "💬 Ask another", callback_data: "nav:ask" }, { text: "🏠 Home", callback_data: "nav:home" }]] });
+    sendPanel(destination, views.escape(answer), { inline_keyboard: [[{ text: "💬 Ask another", callback_data: "nav:ask" }, { text: "🏠 Home", callback_data: "nav:home" }]] }, message.message_id);
   } catch (error) {
     const failure = friendlyError(error);
     if (!failure) throw error;
-    sendPanel(destination, failure, { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] });
+    sendPanel(destination, failure, { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] }, message.message_id);
+    message._activityAction = "could not answer question: " + failure;
   }
   return true;
 }
@@ -482,12 +485,13 @@ function handleRecipeLink(app, user, destination, message) {
   try {
     rawUrl = recipeUrls.extractFirstUrl(text);
   } catch (_) {
-    sendPanel(destination, "I can only import a safe public HTTP or HTTPS recipe link.", { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] });
+    sendPanel(destination, "I can only import a safe public HTTP or HTTPS recipe link.", { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] }, message.message_id);
+    message._activityAction = "rejected unsafe recipe link";
     return true;
   }
   if (!rawUrl) return false;
   const platform = recipeUrls.platform(rawUrl);
-  const response = sendPanel(destination, views.recipeImportAnalyzingText(platform), { inline_keyboard: [] });
+  const response = sendPanel(destination, views.recipeImportAnalyzingText(platform), { inline_keyboard: [] }, message.message_id);
   const record = recipeImports.create(app, rawUrl, user, destination, response.message_id);
   if (record.getString("status") !== "saved") recipeImports.analyze(app, record);
   importView(app, destination, { message_id: response.message_id }, app.findRecordById("recipe_imports", record.id));
@@ -508,6 +512,7 @@ function handle(app, update) {
       return;
     }
     const destination = state.ensureChat(app, chat, user);
+    activity.received(app, update, chat);
     let handled = false;
     if (kind === "callback_query") handled = handleCallback(app, user, destination, update.callback_query);
     if (kind === "photo") handled = handlePhoto(app, user, destination, update.message);
@@ -516,8 +521,11 @@ function handle(app, update) {
       handled = parsed ? handleCommand(app, user, destination, update.message, parsed) : (handleRecipeLink(app, user, destination, update.message) || handleQuestion(app, destination, update.message));
     }
     finishUpdate(app, updateRecord, handled ? "processed" : "ignored");
+    activity.completed(app, update, chat, activity.action(update, handled));
   } catch (error) {
     finishUpdate(app, updateRecord, "failed", safeCode(error));
+    const failedChat = security.chatFromUpdate(update);
+    if (failedChat) activity.completed(app, update, failedChat, "failed: " + safeCode(error));
     throw error;
   }
 }

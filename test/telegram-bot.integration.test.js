@@ -300,7 +300,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
   }
   let updateId = 10;
   const nextUpdate = () => ++updateId;
-  const groupChat = { id: -100123, type: "group", title: "Family" };
+  const groupChat = { id: -100123, type: "group", title: "Onze huis" };
   const privateChat = { id: 111, type: "private", first_name: "Amir" };
 
   assert.equal((await webhook({ update_id: 1 }, "wrong-secret")).status, 404);
@@ -318,10 +318,11 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
   await create("telegram_users", { telegram_user_id: "222", member: maryam.id, active: true });
 
   await t.test("each user message gets a new response while buttons edit only their originating message", async () => {
-    const sendsBefore = mock.telegram.filter((call) => call.method === "sendMessage").length;
-    await webhook({ update_id: nextUpdate(), message: { message_id: 2, from: { id: 111 }, chat: groupChat, text: "/start" } });
+    await webhook({ update_id: nextUpdate(), message: { message_id: 2, from: { id: 111, first_name: "Amir" }, chat: groupChat, text: "/start" } });
     await webhook({ update_id: nextUpdate(), message: { message_id: 3, from: { id: 111 }, chat: groupChat, text: "/meals" } });
-    assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length - sendsBefore, 2);
+    const sent = mock.telegram.filter((call) => call.method === "sendMessage").slice(-2);
+    assert.equal(sent.length, 2);
+    assert.deepEqual(sent.map((call) => call.body.reply_parameters), [{ message_id: 2 }, { message_id: 3 }]);
     const sendsAfterMessages = mock.telegram.filter((call) => call.method === "sendMessage").length;
     await webhook({ update_id: nextUpdate(), callback_query: { id: "home", from: { id: 111 }, data: "nav:home", message: { message_id: 701, chat: groupChat } } });
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsAfterMessages);
@@ -341,6 +342,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBefore + 3);
     const lastPanel = mock.telegram.filter((call) => call.method === "sendMessage" || call.method === "editMessageText").at(-1);
     assert.match(lastPanel.body.text, /&lt;without HTML&gt;/);
+    assert.deepEqual(lastPanel.body.reply_parameters, { message_id: 7 });
   });
 
   const today = amsterdamDate();
@@ -368,6 +370,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     const importRecord = (await list("recipe_imports")).find((item) => item.canonical_url.includes("abc123xyz99"));
     assert.equal(importRecord.status, "ready");
     const analysisSend = mock.telegram.filter((call) => call.method === "sendMessage").at(-1);
+    assert.deepEqual(analysisSend.body.reply_parameters, { message_id: 92 });
     assert.equal(String(analysisSend.result.message_id), importRecord.response_message_id);
     const preview = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
     assert.equal(preview.body.message_id, analysisSend.result.message_id);
@@ -524,6 +527,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     const photoResponse = mock.telegram.filter((call) => call.method === "sendMessage").at(-1);
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBeforePhoto + 1);
     assert.match(photoResponse.body.text, /Photo saved/);
+    assert.deepEqual(photoResponse.body.reply_parameters, { message_id: 20 });
   });
 
   await t.test("public website data stays read-only while assistant storage remains private", async () => {
@@ -534,4 +538,6 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
 
   assert.equal(logs.includes(BOT_TOKEN), false);
   assert.equal(logs.includes("test-openrouter-key"), false);
+  assert.match(logs, /Telegram received \(Amir from Onze huis\): \/start/);
+  assert.match(logs, /Telegram action \(Amir from Onze huis\): sent home dashboard/);
 });

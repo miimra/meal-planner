@@ -47,9 +47,10 @@ function multipartRequest(method, fields, attachmentName, file) {
   return result.json.result;
 }
 
-function sendMessage(chatId, text, replyMarkup) {
+function sendMessage(chatId, text, replyMarkup, replyToMessageId) {
   const body = { chat_id: String(chatId), text, parse_mode: "HTML" };
   if (replyMarkup) body.reply_markup = replyMarkup;
+  if (replyToMessageId) body.reply_parameters = { message_id: Number(replyToMessageId) };
   return request("sendMessage", body);
 }
 

@@ -106,6 +106,14 @@ stored assignments and feedback, household preferences, and the next two
 weeks of dinner categories. Natural-language answers can recommend a date but
 cannot alter assignments; all mutations require a button.
 
+Every user-triggered bot message is a Telegram reply to the exact incoming
+message. Button actions edit the bot message containing the button, while the
+scheduled 18:30 dashboard remains a standalone message. Authorized activity is
+logged as `Telegram received (Person from Chat): message` followed by
+`Telegram action (Person from Chat): result`; control characters are removed
+and bot credentials or internal record metadata are never added automatically
+to these audit lines.
+
 Authorized members can also send a public recipe URL as ordinary text. The bot
 sends a new analysis response and edits that response into a preview. **Save
 to want to try** is the only action that creates a dish; cancelling or merely

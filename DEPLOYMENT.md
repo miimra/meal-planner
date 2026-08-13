@@ -41,6 +41,8 @@ existing Docker container does not reload its environment.
 cd ~/meal-planner
 docker compose ps
 docker compose logs --tail=100 meal-planner
+# Follow received Telegram messages and the actions taken for them.
+docker compose logs --follow meal-planner
 curl --fail http://127.0.0.1:8091/api/health
 ```
 
