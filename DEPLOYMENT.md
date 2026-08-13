@@ -1,104 +1,64 @@
-# Meal Planner deployment record
+# Meal Planner deployment
 
-The production service runs on `raptor@printer-server.local` as the Docker
-container `meal-planner`. Deployments are performed by
-[`scripts/deploy-printer-server.sh`](./scripts/deploy-printer-server.sh).
-The recipe-link-import release below was deployed with the script after the
-complete local test suite and production build passed. It adds the private
-`recipe_imports` collection, confirmed `want_to_try` dish metadata, secure
-public-page ingestion, and category/feedback-aware recommendation candidates.
-No verification step sent a family-chat message.
-
-## Recorded deployment
+Production runs from a normal Git checkout on the printer server:
 
 | Field | Value |
 | --- | --- |
-| Status | Healthy and running |
-| Image tag | `meal-planner:3c17658939ae` (`sha256:aef45430151deb0cfb4cd3067cb1e1befda5341dff6e7219593d37524db3e24e`) |
-| Deployment date | 2026-08-12 22:26 UTC |
 | Host | `raptor@printer-server.local` |
-| Host port | `8091` |
-| Container port | `8090` |
-| Persistent volume | `meal-planner-pb-data` mounted at `/pb/pb_data` |
-| Restart policy | `unless-stopped` |
+| Checkout | `/home/raptor/meal-planner` |
+| Branch | `master` |
+| Compose file | `/home/raptor/meal-planner/docker-compose.yml` |
+| Configuration | `/home/raptor/meal-planner/.env` (`0600`) |
+| Container | `meal-planner` with `unless-stopped` |
+| Port | host `8091` → container `8090` |
+| Persistent volume | `meal-planner-pb-data` → `/pb/pb_data` |
+| Backups | `/home/raptor/meal-planner/backups` |
 | Health check | `curl --fail http://127.0.0.1:8091/api/health` |
-| Runtime secrets | `/home/raptor/services/meal-planner/meal-planner.env` (`0600`) |
 
-Post-deployment verification confirmed:
+## Deploy
 
-- local and public `/api/health`, plus the public site, return successfully;
-- the container is running with `unless-stopped`, host port `8091`, and the
-  existing `meal-planner-pb-data:/pb/pb_data` mount;
-- the migration history ends with `1786886400_recipe_link_imports.js`; the
-  private import collection and confirmed-dish lifecycle/source fields are
-  present, and the migration's down path passed locally;
-- existing public data remains present (12 categories, 44 dishes, and existing
-  meal assignments), and four volume backups were retained;
-- Telegram reports exactly `home`, `meals`, `ask`, and `settings`, with the
-  existing webhook URL, the expected update types, and zero pending updates.
-  Its last reported delivery error was a historical 502 from
-  2026-08-11 20:24:45 UTC, before this deployment.
-- the protected runtime env file remains mode `0600`; `YOUTUBE_API_KEY` is not
-  configured, so YouTube imports currently use public-page metadata as a
-  best-effort fallback while generic public recipe ingestion remains active.
-
-No test or verification step sent a family-chat message. Do not copy the env
-file or any secret values into this record, shell history, or Git.
-
-## What the deployment does
-
-1. Packages the working tree while excluding Git metadata, build output,
-   dependencies, PocketBase data, local env files, and archives.
-2. Transfers the archive to the printer server over SSH and builds
-   `meal-planner:<Git commit>` for `linux/arm64`.
-3. On the first run only, copies the existing `meal-planner` container's
-   environment into `meal-planner.env` with mode `0600`; the environment is
-   redirected through a temporary file and is never printed.
-4. Creates a timestamped backup of `meal-planner-pb-data`, retaining the eight
-   most recent backups.
-5. Replaces `meal-planner` on port `8091`, retaining the same volume and
-   `unless-stopped` policy. The existing Telegram webhook URL is not changed.
-6. Waits for `/api/health`. If startup or health checking fails, the new
-   container is removed and the previous container is restored automatically.
-   The previous image is also tagged `meal-planner:previous`; the newest eight
-   commit-tagged images are retained.
-
-## Manual rollback
-
-The automatic rollback is the normal path. If a healthy deployment later needs
-to be reverted, verify that `meal-planner:previous` exists, then run this on
-the printer server:
+Run this on the server:
 
 ```bash
-set -eu
-docker rm -f meal-planner
-docker run -d \
-  --name meal-planner \
-  --restart unless-stopped \
-  --env-file /home/raptor/services/meal-planner/meal-planner.env \
-  -p 8091:8090 \
-  -v meal-planner-pb-data:/pb/pb_data \
-  meal-planner:previous
+cd ~/meal-planner
+./deploy.sh
+```
+
+The script performs a fast-forward-only pull from `origin/master`, protects
+`.env` with mode `0600`, backs up the PocketBase volume, builds the exact Git
+commit, and recreates the service with Docker Compose. It retains the newest
+eight volume backups. A failed Compose start or health check restores the
+previous image as `meal-planner:rollback`.
+
+Changing `.env` requires running `./deploy.sh` again because restarting an
+existing Docker container does not reload its environment.
+
+## Useful commands
+
+```bash
+cd ~/meal-planner
+docker compose ps
+docker compose logs --tail=100 meal-planner
 curl --fail http://127.0.0.1:8091/api/health
 ```
 
-Volume archives are stored under
-`/home/raptor/services/meal-planner/backups`. Restore one only after stopping
-the container and verifying the selected archive:
+Manual image rollback, if a later problem appears after a successful deploy:
 
 ```bash
+cd ~/meal-planner
 docker rm -f meal-planner
-docker run --rm \
-  -v meal-planner-pb-data:/target \
-  -v /home/raptor/services/meal-planner/backups:/backup \
-  alpine:3.20 sh -c 'rm -rf /target/* /target/.[!.]* /target/..?* 2>/dev/null || true; tar -xzf /backup/<backup-file>.tar.gz -C /target'
+MEAL_PLANNER_IMAGE=meal-planner:rollback docker compose up -d --no-build
+curl --fail http://127.0.0.1:8091/api/health
 ```
 
-## Credential follow-up
+To restore PocketBase data, first stop the service and verify the selected
+archive under `~/meal-planner/backups`. Data restoration is intentionally not
+automated by `deploy.sh`.
 
-The Telegram and OpenRouter credentials that were present during the original
-environment inspection must be rotated immediately by the owner through
-BotFather and OpenRouter. The deployment script preserves the current values
-in the protected env file to avoid an outage, but never displays, logs, or
-commits them. After rotating a credential, edit the env file with mode `0600`,
-restart `meal-planner`, and verify the health endpoint and webhook status.
+## Secret handling
+
+Never commit `.env`, print its contents, or copy credentials into deployment
+logs. Telegram and OpenRouter credentials exposed during the original
+environment inspection still require owner rotation. After changing `.env`,
+run `./deploy.sh` and verify health and Telegram webhook status without sending
+an unsolicited family-chat message.

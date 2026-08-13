@@ -51,12 +51,10 @@ Tokens and API keys must never be committed.
 official YouTube Data API to inspect public titles and descriptions. It does
 not grant access to arbitrary video transcripts.
 
-For production, keep these values in
-`/home/raptor/services/meal-planner/meal-planner.env` on the printer server,
-with mode `0600`. The deployment script migrates the environment from the
-existing `meal-planner` container into that file on its first run without
-printing its contents. Set `OPENROUTER_IMAGE_MODEL` when the Telegram bot's
-lazy suggestion images should use a dedicated OpenRouter image model.
+For production, keep these values in `/home/raptor/meal-planner/.env` on the
+printer server with mode `0600`. Docker Compose loads that file when recreating
+the container. Set `OPENROUTER_IMAGE_MODEL` when the Telegram bot's lazy
+suggestion images should use a dedicated OpenRouter image model.
 
 ## Telegram setup
 
@@ -189,22 +187,21 @@ not call Telegram or consume paid AI tokens.
 
 ## Production
 
-The supported production deployment is the checked-in script, which packages
-the working tree, transfers it to `raptor@printer-server.local`, builds an
-ARM64 image tagged with the Git commit, and replaces the container while
-preserving the existing PocketBase volume and public webhook:
+Production is a normal checkout of the `master` branch at
+`/home/raptor/meal-planner`. Deploy directly on the printer server:
 
 ```bash
-./scripts/deploy-printer-server.sh
+ssh raptor@printer-server.local
+cd ~/meal-planner
+./deploy.sh
 ```
 
-It backs up `meal-planner-pb-data` before each replacement, runs the container
-as `meal-planner` with `unless-stopped`, maps host port `8091` to PocketBase's
-container port `8090`, and waits for
-`http://127.0.0.1:8091/api/health`. A failed startup or health check restores
-the previous container automatically. Recent volume backups and commit-tagged
-images are retained for manual rollback. The script never connects to the
-server unless it is explicitly run.
+`deploy.sh` checks out and fast-forwards from `origin/master`, backs up the
+external `meal-planner-pb-data` volume, builds the Git commit through
+`docker-compose.yml`, recreates the container, and waits for
+`http://127.0.0.1:8091/api/health`. If startup fails, it restores the image
+that was running before deployment. The latest eight volume backups remain in
+`~/meal-planner/backups`.
 
 The deployed runtime uses:
 
@@ -212,7 +209,9 @@ The deployed runtime uses:
 host: raptor@printer-server.local
 port: 8091
 volume: meal-planner-pb-data -> /pb/pb_data
-secret file: /home/raptor/services/meal-planner/meal-planner.env (0600)
+checkout: /home/raptor/meal-planner (master)
+configuration: /home/raptor/meal-planner/.env (0600)
+compose file: /home/raptor/meal-planner/docker-compose.yml
 health check: curl --fail http://127.0.0.1:8091/api/health
 ```
 

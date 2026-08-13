@@ -1,0 +1,23 @@
+services:
+  meal-planner:
+    build:
+      context: .
+    image: ${MEAL_PLANNER_IMAGE:-meal-planner:latest}
+    container_name: meal-planner
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8091:8090"
+    volumes:
+      - meal-planner-pb-data:/pb/pb_data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8090/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
+volumes:
+  meal-planner-pb-data:
+    external: true
