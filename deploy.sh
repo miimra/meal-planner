@@ -77,9 +77,11 @@ git fetch --prune origin "+refs/heads/$branch:refs/remotes/origin/$branch"
 if git show-ref --verify --quiet "refs/heads/$branch"; then
   git switch "$branch"
 else
-  git switch --track -c "$branch" "origin/$branch"
+  git switch --no-track -c "$branch" "$expected_commit"
 fi
 git merge --ff-only "origin/$branch"
+git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+git branch --set-upstream-to="origin/$branch" "$branch"
 
 actual_commit="$(git rev-parse HEAD)"
 [[ "$actual_commit" == "$expected_commit" ]] || {
