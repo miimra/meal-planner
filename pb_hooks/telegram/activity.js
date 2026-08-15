@@ -53,7 +53,7 @@ function callbackAction(data) {
   if (parts[0] === "pick" && parts[1] === "date") return "selected date " + clean(parts[2], 20);
   if (parts[0] === "pick" && parts[1] === "meal") return "selected " + clean(parts[2] + " " + parts[3], 80);
   if (parts[0] === "do") {
-    const labels = { suggest: "generated a suggestion for", last: "planned the last meal for", buy: "set buy food for", out: "set eat out for", skip: "skipped" };
+    const labels = { suggest: "generated a suggestion for", last: "set leftovers for", leftovers: "set leftovers for", buy: "set buy food for", out: "set eat out for", skip: "skipped" };
     return (labels[parts[1]] || "updated") + " " + clean(parts[2] + " " + parts[3], 80);
   }
   if (parts[0] === "sg") {

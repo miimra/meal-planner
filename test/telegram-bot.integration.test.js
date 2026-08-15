@@ -216,6 +216,12 @@ function addDays(value, count) {
   return new Date(Date.UTC(year, month - 1, day + count)).toISOString().slice(0, 10);
 }
 
+function nextWeekday(value, weekday) {
+  const current = new Date(value + "T12:00:00Z").getUTCDay();
+  const offset = ((weekday - current) + 7) % 7;
+  return addDays(value, offset);
+}
+
 test("Telegram household assistant PocketBase integration", { timeout: 60_000 }, async (t) => {
   const pocketbase = findPocketBase();
   if (!pocketbase) {
@@ -347,7 +353,12 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
 
   const today = amsterdamDate();
   const tomorrow = addDays(today, 1);
-  await t.test("tomorrow-plan and burger-date answers are grounded in deterministic stored facts", async () => {
+  await t.test("today, tomorrow, and burger-date answers are grounded in deterministic stored facts", async () => {
+    const chosenDish = (await list("dishes"))[0];
+    await create("meal_assignments", { date: today, meal: "breakfast", dish: chosenDish.id, status: "planned", selection_source: "telegram" });
+    await webhook({ update_id: nextUpdate(), message: { message_id: 80, from: { id: 111 }, chat: privateChat, text: "What is today's food?" } });
+    assert.match(mock.assistantRequests.at(-1).deterministicDraft, new RegExp("Today \\(.*" + today));
+    assert.match(mock.assistantRequests.at(-1).deterministicDraft, new RegExp(chosenDish.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     await webhook({ update_id: nextUpdate(), message: { message_id: 8, from: { id: 111 }, chat: privateChat, text: "What is tomorrow's meal plan?" } });
     assert.match(mock.assistantRequests.at(-1).deterministicDraft, new RegExp("Tomorrow \\(.*" + tomorrow));
     assert.match(mock.assistantRequests.at(-1).deterministicDraft, /breakfast.*lunch.*dinner/i);
@@ -432,6 +443,40 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.equal(mock.telegram.length, before);
   });
 
+  await t.test("meal-change screens show current food and require an explicit Sunday category", async () => {
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "change-today", from: { id: 111 }, data: `pick:date:${today}`, message: { message_id: 704, chat: groupChat } } });
+    let edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
+    assert.match(edit.body.text, /Which meal do you want to change/);
+    assert.match(edit.body.text, new RegExp((await list("dishes"))[0].name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "change-breakfast", from: { id: 111 }, data: `pick:meal:${today}:breakfast`, message: { message_id: 704, chat: groupChat } } });
+    edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
+    assert.match(edit.body.text, /Current: <b>.+<\/b>/);
+    assert.match(JSON.stringify(edit.body.reply_markup), /Leftovers/);
+
+    const sunday = nextWeekday(today, 0);
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "sunday-dinner", from: { id: 111 }, data: `pick:meal:${sunday}:dinner`, message: { message_id: 705, chat: groupChat } } });
+    edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
+    assert.match(edit.body.text, /Category: <b>choose/);
+    assert.doesNotMatch(JSON.stringify(edit.body.reply_markup), /do:suggest/);
+    const categoryButton = edit.body.reply_markup.inline_keyboard.flat().find((button) => String(button.callback_data || "").startsWith(`pick:cat:${sunday}:dinner:`));
+    assert.ok(categoryButton);
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "sunday-category", from: { id: 111 }, data: categoryButton.callback_data, message: { message_id: 705, chat: groupChat } } });
+    edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
+    assert.match(edit.body.text, /Category: <b>/);
+    assert.match(JSON.stringify(edit.body.reply_markup), /do:suggest/);
+  });
+
+  await t.test("old planning buttons cannot change past dates", async () => {
+    const yesterday = addDays(today, -1);
+    const before = (await list("meal_assignments")).filter((item) => item.date === yesterday).length;
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "old-leftovers", from: { id: 111 }, data: `do:leftovers:${yesterday}:dinner`, message: { message_id: 706, chat: groupChat } } });
+    assert.equal((await list("meal_assignments")).filter((item) => item.date === yesterday).length, before);
+    const answer = mock.telegram.filter((call) => call.method === "answerCallbackQuery").at(-1);
+    assert.equal(answer.body.show_alert, true);
+    assert.match(answer.body.text, /earlier date/);
+  });
+
   let firstSuggestion;
   await t.test("suggestion opens lazily as rich embedded media and caches its image", async () => {
     const imagesBefore = mock.imageRequests.length;
@@ -493,9 +538,18 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.match((await list("dishes")).find((item) => item.id === assignment.dish).name, /suggestion 2/);
   });
 
-  await t.test("Another replaces embedded media and text-only fallback remains usable when image generation fails", async () => {
+  await t.test("stale suggestion buttons are safe, while Another and text fallback remain usable", async () => {
     const sendsBeforeAnother = mock.telegram.filter((call) => call.method === "sendMessage").length;
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "another", from: { id: 111 }, data: `sg:next:${secondSuggestion.id}`, message: { message_id: 702, chat: groupChat, rich_message: {} } } });
+    const requestsBeforeStale = mock.mealRequests.length;
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "stale-another", from: { id: 111 }, data: `sg:next:${secondSuggestion.id}`, message: { message_id: 702, chat: groupChat, rich_message: {} } } });
+    assert.equal(mock.mealRequests.length, requestsBeforeStale);
+    const staleAnswer = mock.telegram.filter((call) => call.method === "answerCallbackQuery").at(-1);
+    assert.equal(staleAnswer.body.show_alert, true);
+    assert.match(staleAnswer.body.text, /no longer active/);
+
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "suggest-three", from: { id: 111 }, data: `do:suggest:${tomorrow}:lunch`, message: { message_id: 702, chat: groupChat } } });
+    const pending = (await list("meal_suggestions")).find((item) => item.date === tomorrow && item.meal === "lunch" && item.outcome === "pending");
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "another", from: { id: 111 }, data: `sg:next:${pending.id}`, message: { message_id: 702, chat: groupChat, rich_message: {} } } });
     assert.ok(mock.telegram.filter((call) => call.method === "editMessageText" && (call.multipart || call.body && call.body.rich_message)).length >= 3);
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBeforeAnother);
 
@@ -504,6 +558,15 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     await webhook({ update_id: nextUpdate(), callback_query: { id: "fallback", from: { id: 111 }, data: `do:suggest:${tomorrow}:breakfast`, message: { message_id: 101, chat: groupChat } } });
     const fallbackCalls = mock.telegram.slice(callsBefore).filter((call) => call.method === "sendMessage" || call.method === "editMessageText");
     assert.ok(fallbackCalls.some((call) => /Suggestion details/.test(call.body.text) && /Use this/.test(JSON.stringify(call.body.reply_markup))));
+  });
+
+  await t.test("Leftovers stores only a neutral state and never guesses a dish", async () => {
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "leftovers", from: { id: 111 }, data: `do:leftovers:${tomorrow}:lunch`, message: { message_id: 707, chat: groupChat } } });
+    const assignment = (await list("meal_assignments")).find((item) => item.date === tomorrow && item.meal === "lunch");
+    assert.equal(assignment.status, "leftovers");
+    assert.equal(assignment.dish, "");
+    const edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
+    assert.match(edit.body.text, /Lunch<\/b> — <i>Left over<\/i>/);
   });
 
   let occurrence;

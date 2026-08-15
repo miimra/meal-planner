@@ -18,7 +18,19 @@ test("buildDay always includes breakfast, lunch, and dinner", () => {
   const day = buildDay("2026-08-12", categories, [], []);
   assert.deepEqual(Object.keys(day.meals), ["breakfast", "lunch", "dinner"]);
   assert.equal(day.meals.breakfast.category, null);
+  assert.deepEqual(day.meals.breakfast.categoryOptions, []);
   assert.equal(day.meals.breakfast.dish, null);
+});
+
+test("buildDay exposes both Sunday dinner category choices", () => {
+  const sundayCategories: Category[] = [
+    ...categories,
+    { ...categories[0], pbId: "grill-record", catId: 2, name_en: "Iranian Grilled", name_fa: "کبابی ایرانی", emoji: "🍢" },
+    { ...categories[0], pbId: "stew-record", catId: 3, name_en: "Heavy Iranian Stews", name_fa: "خورشت‌های سنگین", emoji: "🍲" },
+  ];
+  const day = buildDay("2026-08-16", sundayCategories, [], []);
+  assert.equal(day.meals.dinner.category, null);
+  assert.deepEqual(day.meals.dinner.categoryOptions.map((item) => item.catId), [2, 3]);
 });
 
 test("buildDay exposes exact assignments and special statuses", () => {

@@ -9,6 +9,7 @@ export type MealStatus =
   | "planned"
   | "cooked"
   | "skipped"
+  | "leftovers"
   | "buy_food"
   | "eating_out";
 
@@ -31,6 +32,7 @@ export interface MealSlot {
   meal: MealType;
   status: MealStatus;
   category: Category | null;
+  categoryOptions: Category[];
   dish: PlanDish | null;
   selectionSource: AssignmentRecord["selection_source"] | null;
 }
@@ -134,6 +136,11 @@ export function buildDay(
     if (!category && meal === "dinner" && rotation.categoryId !== undefined) {
       category = findCategory(categories, rotation.categoryId) ?? null;
     }
+    const categoryOptions = meal !== "dinner"
+      ? []
+      : rotation.choiceIds
+        ? rotation.choiceIds.map((catId) => findCategory(categories, catId)).filter((item): item is Category => Boolean(item))
+        : category ? [category] : [];
     const dish = assignment?.dish ? dishById.get(assignment.dish) ?? null : null;
     let status: MealStatus = assignment?.status || (dish ? "planned" : "unplanned");
     if (!assignment && meal === "dinner" && rotation.kind === "eat-out") status = "eating_out";
@@ -141,6 +148,7 @@ export function buildDay(
       meal,
       status,
       category,
+      categoryOptions,
       dish,
       selectionSource: assignment?.selection_source || null,
     };

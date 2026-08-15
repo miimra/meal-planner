@@ -130,9 +130,18 @@ Every new command, authorized question, or feedback photo receives a new bot
 response. Buttons edit the response message that contains them, so independent
 conversations never overwrite each other and button navigation never posts a
 new message. Use **Meals → Change a meal → date → meal** to choose
-**Suggest**, **Last meal**, **Buy**, **Eat out**, or **Skip**. Accepting a
+**Suggest**, **Leftovers**, **Buy**, **Eat out**, or **Skip**. **Leftovers**
+stores only the neutral “Left over” state and never guesses which earlier dish
+is being reused. The change screen always shows the current choice and the
+dinner rotation category. Sunday requires choosing Grilled or Stew before a
+suggestion can be generated. Accepting a
 suggestion updates an existing assignment as well as a new one. **Another**
 replaces the suggestion card rather than posting another card.
+
+Navigation buttons on older bot messages remain useful and refresh the message
+that contains them. Planning buttons for dates that have passed are rejected,
+and accepted or replaced suggestion cards cannot be reactivated from an old
+message.
 
 Breakfast, dinner, and weekend lunch are sized for two adults and one baby.
 Weekday lunch is sized for two adults because the baby is not present.
@@ -151,10 +160,12 @@ navigating away edits the same message back to text and removes the photo. If
 generation or upload fails, the text suggestion and all of its buttons remain
 usable.
 
-At 18:30, PocketBase sends one new dashboard for that day with today's
-feedback entry point and tomorrow's planning status. Its buttons edit that
-daily dashboard in place. It does not send separate meal cards or unsolicited
-summary messages.
+At 18:30, PocketBase sends one new check-in that puts tomorrow first: all three
+meal decisions, the dinner category (or Sunday category choice), and a direct
+**Plan tomorrow** button. Today's chosen meals remain underneath with a feedback
+entry point when at least one dish can be rated. Its buttons edit that daily
+message in place. It does not send separate meal cards or unsolicited summary
+messages.
 
 After a feedback button is pressed, the next photo from that same user and chat
 is attached to that meal. The bot confirms the exact date, meal slot, and dish.
@@ -195,22 +206,22 @@ not call Telegram or consume paid AI tokens.
 
 ## Production
 
-Production is a normal checkout of the `master` branch at
-`/home/raptor/meal-planner`. Deploy directly on the printer server:
+Production is a normal checkout of the `main` branch at
+`/home/raptor/meal-planner`. From a clean development checkout whose `main`
+commit has already been pushed, run:
 
 ```bash
-ssh raptor@printer-server.local
-cd ~/meal-planner
 ./deploy.sh
 ```
 
-`deploy.sh` checks out and fast-forwards from `origin/master`, backs up the
-external `meal-planner-pb-data` volume, builds the Git commit through
-`docker-compose.yml`, recreates the container, and waits for
-`http://127.0.0.1:8091/api/health`. If startup fails, it restores the image
-that was running before deployment. The latest eight volume backups remain in
-`~/meal-planner/backups`. After health passes it also registers the exact four
-Telegram commands and secure webhook for the token currently in `.env`.
+`deploy.sh` verifies the exact `origin/main` commit, runs tests and a production
+build locally, and then updates the printer-server checkout over SSH. The host
+helper backs up the external `meal-planner-pb-data` volume, builds that exact
+commit through `docker-compose.yml`, recreates the container, and checks both
+the API and static app. If startup fails, it restores the previously running
+image. The newest eight volume backups remain in `~/meal-planner/backups`.
+After health passes it registers and verifies Telegram's four commands and
+secure webhook using the production `.env`.
 
 The deployed runtime uses:
 
@@ -218,7 +229,7 @@ The deployed runtime uses:
 host: raptor@printer-server.local
 port: 8091
 volume: meal-planner-pb-data -> /pb/pb_data
-checkout: /home/raptor/meal-planner (master)
+checkout: /home/raptor/meal-planner (main)
 configuration: /home/raptor/meal-planner/.env (0600)
 compose file: /home/raptor/meal-planner/docker-compose.yml
 health check: curl --fail http://127.0.0.1:8091/api/health

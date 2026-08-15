@@ -34,7 +34,10 @@ function safeCode(error) {
 
 function friendlyError(error) {
   const code = safeCode(error);
-  if (code === "no_last_meal") return "There isn’t a previous meal for that slot yet.";
+  if (code === "planning_date_passed") return "That planning button is for an earlier date. Open Meals to choose today or a future date.";
+  if (code === "suggestion_not_pending") return "That suggestion is no longer active. Open the current meal plan to make a new choice.";
+  if (code === "dinner_category_required") return "Choose the dinner category first.";
+  if (code === "invalid_dinner_category") return "That category does not belong to this dinner date.";
   if (code === "meal_not_planned") return "That meal has no planned dish to rate.";
   if (code === "recipe_import_category_required") return "Choose a household category before saving this recipe.";
   if (code.indexOf("recipe_import_") === 0) return "This recipe card is no longer available for that action.";
@@ -93,15 +96,31 @@ function editPanel(destination, message, text, keyboard) {
 function homeView(app, destination) {
   const today = planning.today();
   const tomorrow = calendar.addDays(today, 1);
+  const todayValue = planning.dayValue(app, today);
   return {
-    text: views.homeText(planning.dayValue(app, today), planning.dayValue(app, tomorrow), destination.getBool("daily_enabled")),
-    keyboard: views.homeKeyboard(today),
+    text: views.homeText(todayValue, planning.dayValue(app, tomorrow), destination.getBool("daily_enabled")),
+    keyboard: views.homeKeyboard(today, tomorrow, calendar.MEALS.some((meal) => todayValue.meals[meal].dish)),
+  };
+}
+
+function dailyView(app) {
+  const today = planning.today();
+  const tomorrow = calendar.addDays(today, 1);
+  const todayValue = planning.dayValue(app, today);
+  return {
+    text: views.dailyText(todayValue, planning.dayValue(app, tomorrow)),
+    keyboard: views.dailyKeyboard(today, tomorrow, calendar.MEALS.some((meal) => todayValue.meals[meal].dish)),
   };
 }
 
 function sendHome(app, destination, replyToMessageId) {
   const view = homeView(app, destination);
   return sendPanel(destination, view.text, view.keyboard, replyToMessageId);
+}
+
+function sendDaily(app, destination) {
+  const view = dailyView(app);
+  return sendPanel(destination, view.text, view.keyboard);
 }
 
 function editHome(app, destination, message) {
@@ -208,11 +227,26 @@ function markSuggestionSelected(app, destination, message, suggestion) {
 function performAction(app, action, date, meal) {
   calendar.parseDate(date);
   calendar.assertMeal(meal);
-  if (action === "last") return planning.useLastMeal(app, date, meal);
+  if (date < planning.today()) throw new Error("planning_date_passed");
+  if (action === "last" || action === "leftovers") return planning.setSpecialStatus(app, date, meal, "leftovers");
   if (action === "buy") return planning.setSpecialStatus(app, date, meal, "buy_food");
   if (action === "out") return planning.setSpecialStatus(app, date, meal, "eating_out");
   if (action === "skip") return planning.setSpecialStatus(app, date, meal, "skipped");
   throw new Error("invalid_action");
+}
+
+function assertPlanningDate(date) {
+  calendar.parseDate(date);
+  if (date < planning.today()) throw new Error("planning_date_passed");
+}
+
+function assertSuggestionPending(suggestion) {
+  if (suggestion.getString("outcome") !== "pending") throw new Error("suggestion_not_pending");
+}
+
+function editAction(app, destination, message, date, meal) {
+  const slot = planning.slotValue(app, date, meal);
+  return editPanel(destination, message, views.actionText(date, meal, slot), views.actionKeyboard(date, meal, slot));
 }
 
 function showFeedback(app, destination, message, date, meal) {
@@ -349,20 +383,32 @@ function handleCallback(app, user, destination, query) {
       return true;
     }
     if (parts[0] === "pick" && parts[1] === "date" && parts[2]) {
-      calendar.parseDate(parts[2]);
-      editPanel(destination, query.message, "✏️ <b>Choose a meal · " + parts[2] + "</b>", views.mealKeyboard(parts[2], "pick:meal"));
+      assertPlanningDate(parts[2]);
+      const title = parts[2] === planning.today() ? "Today" : parts[2] === calendar.addDays(planning.today(), 1) ? "Tomorrow" : "Meal plan";
+      editPanel(destination, query.message, views.changeDayText(planning.dayValue(app, parts[2]), title), views.mealKeyboard(parts[2], "pick:meal"));
       client.answerCallback(query.id, "", false);
       return true;
     }
     if (parts[0] === "pick" && parts[1] === "meal" && parts.length === 4) {
-      calendar.parseDate(parts[2]);
+      assertPlanningDate(parts[2]);
       calendar.assertMeal(parts[3]);
-      editPanel(destination, query.message, "✏️ <b>Change " + views.escape(parts[2] + " · " + parts[3]) + "</b>\n\nChoose an option. The plan changes only after you tap one of these buttons or accept a suggestion.", views.actionKeyboard(parts[2], parts[3]));
+      editAction(app, destination, query.message, parts[2], parts[3]);
+      client.answerCallback(query.id, "", false);
+      return true;
+    }
+    if (parts[0] === "pick" && parts[1] === "cat" && parts.length === 5) {
+      assertPlanningDate(parts[2]);
+      if (parts[3] !== "dinner") throw new Error("invalid_dinner_category");
+      planning.selectDinnerCategory(app, parts[2], parts[4]);
+      editAction(app, destination, query.message, parts[2], parts[3]);
       client.answerCallback(query.id, "", false);
       return true;
     }
     if (parts[0] === "do" && parts.length === 4) {
+      assertPlanningDate(parts[2]);
       if (parts[1] === "suggest") {
+        const slot = planning.slotValue(app, parts[2], parts[3]);
+        if (parts[3] === "dinner" && slot.categoryOptions.length > 1 && !slot.category) throw new Error("dinner_category_required");
         const suggestion = planning.generateSuggestions(app, parts[2], [parts[3]])[0];
         showSuggestion(app, destination, query.message, suggestion, false);
         client.answerCallback(query.id, "Suggestion ready", false);
@@ -376,12 +422,16 @@ function handleCallback(app, user, destination, query) {
     if (parts[0] === "sg" && parts.length === 3) {
       const suggestion = app.findRecordById("meal_suggestions", parts[2]);
       if (parts[1] === "use") {
+        assertPlanningDate(suggestion.getString("date"));
+        assertSuggestionPending(suggestion);
         planning.acceptSuggestion(app, suggestion.id, user.getString("member"));
         client.answerCallback(query.id, "Meal planned", false);
         markSuggestionSelected(app, destination, query.message, suggestion);
         return true;
       }
       if (parts[1] === "next") {
+        assertPlanningDate(suggestion.getString("date"));
+        assertSuggestionPending(suggestion);
         const replacement = planning.generateSuggestions(app, suggestion.getString("date"), [suggestion.getString("meal")], suggestion.getString("request_text"))[0];
         showSuggestion(app, destination, query.message, replacement, false);
         client.answerCallback(query.id, "New suggestion ready", false);
@@ -404,7 +454,15 @@ function handleCallback(app, user, destination, query) {
       }
     }
     if (parts[0] === "fb" && parts[1] === "date" && parts[2]) {
-      editPanel(destination, query.message, "⭐ <b>Choose a meal to rate · " + parts[2] + "</b>", views.mealKeyboard(parts[2], "fb:meal"));
+      calendar.parseDate(parts[2]);
+      const day = planning.dayValue(app, parts[2]);
+      const canRate = calendar.MEALS.some((meal) => day.meals[meal].dish);
+      editPanel(
+        destination,
+        query.message,
+        canRate ? "⭐ <b>Choose a meal to rate · " + parts[2] + "</b>" : "⭐ <b>No meals to rate · " + parts[2] + "</b>\n\nOnly meals with a chosen dish can receive feedback.",
+        views.feedbackMealKeyboard(day),
+      );
       client.answerCallback(query.id, "", false);
       return true;
     }
@@ -539,6 +597,7 @@ module.exports = {
   registerCommands,
   editHome,
   editPanel,
+  sendDaily,
   sendHome,
   sendPanel,
   showSuggestion,

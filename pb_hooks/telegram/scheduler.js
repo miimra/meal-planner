@@ -40,7 +40,7 @@ function sendDaily(app) {
     const delivery = claimDelivery(app, chat, target);
     if (!delivery) continue;
     try {
-      const result = bot.sendHome(app, chat);
+      const result = bot.sendDaily(app, chat);
       delivery.set("message_ids", result && result.message_id ? [String(result.message_id)] : []);
       delivery.set("status", "sent");
       app.save(delivery);

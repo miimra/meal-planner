@@ -15,7 +15,7 @@ import { useMealPlan } from "../lib/useMealPlan.ts";
 import { useCurrentTime } from "../lib/useCurrentTime.ts";
 
 const ICON = { breakfast: "☀️", lunch: "🥪", dinner: "🌙" } as const;
-const EMPTY = { unplanned: "Waiting", skipped: "Skipped", buy_food: "Buy food", eating_out: "Eat out", planned: "Planned", cooked: "Cooked" } as const;
+const EMPTY = { unplanned: "Waiting", skipped: "Skipped", leftovers: "Left over", buy_food: "Buy food", eating_out: "Eat out", planned: "Planned", cooked: "Cooked" } as const;
 
 export default function WeekPage() {
   const now = useCurrentTime();
@@ -76,7 +76,11 @@ function WeekMeal({ date, slot, now }: { date: string; slot: MealSlot; now: Date
       <div className="min-w-0 flex-1">
         <p className="truncate font-bold">{name}</p>
         <p className="truncate text-xs font-medium text-ink-faint">
-          {slot.category ? `Main category · ${slot.category.emoji} ${slot.category.name_en}` : slot.meal}
+          {slot.category
+            ? `Main category · ${slot.category.emoji} ${slot.category.name_en}`
+            : slot.categoryOptions.length
+              ? `Choose category · ${slot.categoryOptions.map((category) => `${category.emoji} ${category.name_en}`).join(" or ")}`
+              : slot.meal}
         </p>
       </div>
     </div>

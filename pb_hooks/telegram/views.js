@@ -10,6 +10,7 @@ const STATUS = {
   planned: "Planned",
   cooked: "Cooked",
   skipped: "Skipped",
+  leftovers: "Left over",
   buy_food: "Buy food",
   eating_out: "Eat out",
 };
@@ -20,8 +21,15 @@ function escape(value) {
 
 function slotLine(slot) {
   const title = ICONS[slot.meal] + " <b>" + LABELS[slot.meal] + "</b>";
-  if (slot.dish) return title + " — " + escape(slot.dish.name);
-  return title + " — <i>" + escape(STATUS[slot.status] || STATUS.unplanned) + "</i>";
+  const value = slot.dish
+    ? title + " — " + escape(slot.dish.name)
+    : title + " — <i>" + escape(STATUS[slot.status] || STATUS.unplanned) + "</i>";
+  if (slot.meal !== "dinner") return value;
+  if (slot.category) return value + "\n   🧭 " + escape(slot.category.emoji + " " + slot.category.name);
+  if (slot.categoryOptions && slot.categoryOptions.length) {
+    return value + "\n   🧭 Choose: " + slot.categoryOptions.map((category) => escape(category.emoji + " " + category.name)).join(" or ");
+  }
+  return value;
 }
 
 function dayText(day, title) {
@@ -41,16 +49,16 @@ function weekText(week) {
 }
 
 function homeText(today, tomorrow, dailyEnabled) {
-  const todayPlanned = calendar.MEALS.filter((meal) => today.meals[meal].dish).length;
+  const todayRateable = calendar.MEALS.filter((meal) => today.meals[meal].dish).length;
   const tomorrowResolved = calendar.MEALS.filter((meal) => {
     const slot = tomorrow.meals[meal];
-    return slot.dish || ["buy_food", "eating_out", "skipped"].indexOf(slot.status) !== -1;
+    return slot.dish || ["leftovers", "buy_food", "eating_out", "skipped"].indexOf(slot.status) !== -1;
   }).length;
   return [
     "🏠 <b>Household assistant</b>",
     "<i>Europe/Amsterdam · " + today.date + "</i>",
     "",
-    "<b>Today</b> · " + todayPlanned + " planned meal" + (todayPlanned === 1 ? "" : "s") + " · feedback is ready below",
+    "<b>Today</b> · " + todayRateable + " meal" + (todayRateable === 1 ? "" : "s") + " available for feedback",
     calendar.MEALS.map((meal) => slotLine(today.meals[meal])).join("\n"),
     "",
     "<b>Tomorrow · " + tomorrow.date + "</b> · " + tomorrowResolved + "/3 decisions",
@@ -60,12 +68,44 @@ function homeText(today, tomorrow, dailyEnabled) {
   ].join("\n");
 }
 
-function homeKeyboard(today) {
-  return { inline_keyboard: [
-    [{ text: "🍽 Meals", callback_data: "nav:meals" }, { text: "💬 Ask", callback_data: "nav:ask" }],
-    [{ text: "⭐ Today’s feedback", callback_data: "fb:date:" + today }],
+function homeKeyboard(today, tomorrow, canRateToday) {
+  const rows = [
+    [{ text: "✏️ Plan tomorrow", callback_data: "pick:date:" + tomorrow }, { text: "🍽 Meals", callback_data: "nav:meals" }],
+  ];
+  if (canRateToday) rows.push([{ text: "⭐ Today’s feedback", callback_data: "fb:date:" + today }]);
+  rows.push(
+    [{ text: "💬 Ask", callback_data: "nav:ask" }, { text: "📅 This week", callback_data: "nav:week" }],
     [{ text: "⚙️ Settings", callback_data: "nav:settings" }, { text: "🔄 Refresh", callback_data: "nav:home" }],
-  ] };
+  );
+  return { inline_keyboard: rows };
+}
+
+function dailyText(today, tomorrow) {
+  const tomorrowResolved = calendar.MEALS.filter((meal) => {
+    const slot = tomorrow.meals[meal];
+    return slot.dish || ["leftovers", "buy_food", "eating_out", "skipped"].indexOf(slot.status) !== -1;
+  }).length;
+  const todayRateable = calendar.MEALS.filter((meal) => today.meals[meal].dish).length;
+  return [
+    "🌆 <b>Daily meal check-in · 18:30</b>",
+    "<i>Europe/Amsterdam</i>",
+    "",
+    "<b>Tomorrow · " + tomorrow.date + "</b> · " + tomorrowResolved + "/3 decided",
+    calendar.MEALS.map((meal) => slotLine(tomorrow.meals[meal])).join("\n"),
+    "",
+    "<b>Today · " + today.date + "</b> · " + todayRateable + " meal" + (todayRateable === 1 ? "" : "s") + " available for feedback",
+    calendar.MEALS.map((meal) => slotLine(today.meals[meal])).join("\n"),
+  ].join("\n");
+}
+
+function dailyKeyboard(today, tomorrow, canRateToday) {
+  const rows = [[{ text: "✏️ Plan tomorrow", callback_data: "pick:date:" + tomorrow }]];
+  if (canRateToday) rows.push([{ text: "⭐ Rate today’s meals", callback_data: "fb:date:" + today }]);
+  rows.push(
+    [{ text: "📅 This week", callback_data: "nav:week" }, { text: "🍽 Meals", callback_data: "nav:meals" }],
+    [{ text: "⚙️ Settings", callback_data: "nav:settings" }, { text: "🔄 Current dashboard", callback_data: "nav:home" }],
+  );
+  return { inline_keyboard: rows };
 }
 
 function mealsText() {
@@ -232,13 +272,56 @@ function mealKeyboard(date, prefix) {
   ] };
 }
 
-function actionKeyboard(date, meal) {
-  return { inline_keyboard: [
-    [{ text: "✨ Suggest", callback_data: "do:suggest:" + date + ":" + meal }, { text: "↩️ Last meal", callback_data: "do:last:" + date + ":" + meal }],
+function changeDayText(day, title) {
+  return dayText(day, title) + "\n\n<b>Which meal do you want to change?</b>";
+}
+
+function feedbackMealKeyboard(day) {
+  const buttons = calendar.MEALS.filter((meal) => day.meals[meal].dish).map((meal) => ({
+    text: ICONS[meal] + " " + LABELS[meal] + " · " + String(day.meals[meal].dish.name).slice(0, 24),
+    callback_data: "fb:meal:" + day.date + ":" + meal,
+  }));
+  const rows = buttons.map((button) => [button]);
+  rows.push([{ text: "🏠 Home", callback_data: "nav:home" }]);
+  return { inline_keyboard: rows };
+}
+
+function actionText(date, meal, slot) {
+  const current = slot.dish ? escape(slot.dish.name) : "<i>" + escape(STATUS[slot.status] || STATUS.unplanned) + "</i>";
+  const lines = [
+    "✏️ <b>Change " + escape(date + " · " + LABELS[meal]) + "</b>",
+    "",
+    "Current: <b>" + current + "</b>",
+  ];
+  if (meal === "dinner") {
+    if (slot.category) lines.push("Category: <b>" + escape(slot.category.emoji + " " + slot.category.name) + "</b>");
+    else if (slot.categoryOptions && slot.categoryOptions.length) {
+      lines.push("Category: <b>choose " + slot.categoryOptions.map((category) => escape(category.emoji + " " + category.name)).join(" or ") + "</b>");
+    } else lines.push("Category: <b>no category · eat-out day</b>");
+  }
+  lines.push("", "The plan changes only when you choose an option or accept a suggestion.");
+  return lines.join("\n");
+}
+
+function actionKeyboard(date, meal, slot) {
+  const rows = [];
+  if (meal === "dinner" && slot.categoryOptions && slot.categoryOptions.length > 1) {
+    rows.push(slot.categoryOptions.map((category) => ({
+      text: (slot.category && slot.category.catId === category.catId ? "✅ " : "") + category.emoji + " " + category.name,
+      callback_data: "pick:cat:" + date + ":" + meal + ":" + category.catId,
+    })));
+    if (!slot.category) {
+      rows.push([{ text: "‹ Choose meal", callback_data: "pick:date:" + date }, { text: "🏠 Home", callback_data: "nav:home" }]);
+      return { inline_keyboard: rows };
+    }
+  }
+  rows.push(
+    [{ text: "✨ Suggest", callback_data: "do:suggest:" + date + ":" + meal }, { text: "🥡 Leftovers", callback_data: "do:leftovers:" + date + ":" + meal }],
     [{ text: "🛒 Buy", callback_data: "do:buy:" + date + ":" + meal }, { text: "🍽 Eat out", callback_data: "do:out:" + date + ":" + meal }],
     [{ text: "⏭ Skip", callback_data: "do:skip:" + date + ":" + meal }],
     [{ text: "‹ Choose meal", callback_data: "pick:date:" + date }, { text: "🏠 Home", callback_data: "nav:home" }],
-  ] };
+  );
+  return { inline_keyboard: rows };
 }
 
 function dayKeyboard(date) {
@@ -265,7 +348,11 @@ function askText(botUsername) {
 }
 
 function suggestionCaption(suggestion, slot, selected) {
-  const category = slot.category ? "\n🧭 " + escape(slot.category.emoji + " " + slot.category.name) : "";
+  const category = slot.category
+    ? "\n🧭 " + escape(slot.category.emoji + " " + slot.category.name)
+    : slot.categoryOptions && slot.categoryOptions.length
+      ? "\n🧭 " + slot.categoryOptions.map((item) => escape(item.emoji + " " + item.name)).join(" or ")
+      : "";
   return [
     ICONS[slot.meal] + " <b>" + escape(suggestion.getString("date")) + " · " + LABELS[slot.meal] + "</b>" + (selected ? " · ✅ Selected" : "") + category,
     "",
@@ -315,12 +402,17 @@ function feedbackKeyboard(assignment) {
 module.exports = {
   LABELS,
   actionKeyboard,
+  actionText,
   askText,
+  changeDayText,
+  dailyKeyboard,
+  dailyText,
   dateKeyboard,
   dayKeyboard,
   dayText,
   escape,
   feedbackKeyboard,
+  feedbackMealKeyboard,
   homeKeyboard,
   homeText,
   mealKeyboard,

@@ -15,7 +15,9 @@ function slotFact(app, date, meal) {
     meal,
     status: slot.status,
     dish: slot.dish ? slot.dish.name : null,
-    dinnerCategory: slot.category ? slot.category.emoji + " " + slot.category.name : null,
+    dinnerCategory: slot.category
+      ? slot.category.emoji + " " + slot.category.name
+      : slot.categoryOptions.length ? slot.categoryOptions.map((category) => category.emoji + " " + category.name).join(" or ") : null,
   };
 }
 
@@ -40,14 +42,22 @@ function context(app) {
 
 function slotDescription(slot) {
   if (slot.dish) return slot.dish.name;
-  const labels = { buy_food: "buy food", eating_out: "eat out", skipped: "skip", cooked: "cooked", planned: "planned", unplanned: "not planned yet" };
+  const labels = { leftovers: "left over", buy_food: "buy food", eating_out: "eat out", skipped: "skip", cooked: "cooked", planned: "planned", unplanned: "not planned yet" };
   return labels[slot.status] || "not planned yet";
+}
+
+function dayDraft(app, label, date) {
+  const day = planning.dayValue(app, date);
+  return label + " (" + date + "): " + calendar.MEALS.map((meal) => meal + " — " + slotDescription(day.meals[meal])).join("; ") + ".";
+}
+
+function todayDraft(app) {
+  return dayDraft(app, "Today", planning.today());
 }
 
 function tomorrowDraft(app) {
   const date = calendar.addDays(planning.today(), 1);
-  const day = planning.dayValue(app, date);
-  return "Tomorrow (" + date + "): " + calendar.MEALS.map((meal) => meal + " — " + slotDescription(day.meals[meal])).join("; ") + ".";
+  return dayDraft(app, "Tomorrow", date);
 }
 
 function burgerDraft(app) {
@@ -63,6 +73,7 @@ function burgerDraft(app) {
 function deterministicDraft(app, question) {
   const value = String(question || "").toLowerCase();
   if (/\b(tomorrow|tomorrow['’]?s)\b/.test(value) && /\b(meal|plan|breakfast|lunch|dinner|eat|food)\b/.test(value)) return tomorrowDraft(app);
+  if (/\b(today|today['’]?s|tonight)\b/.test(value) && /\b(meal|plan|breakfast|lunch|dinner|eat|food)\b/.test(value)) return todayDraft(app);
   if (/\bburger|hamburger\b/.test(value) && /\b(when|date|day|next|compatible|fit)\b/.test(value)) return burgerDraft(app);
   return null;
 }
@@ -79,4 +90,4 @@ function answer(app, question) {
   }
 }
 
-module.exports = { answer, burgerDraft, context, deterministicDraft, tomorrowDraft };
+module.exports = { answer, burgerDraft, context, deterministicDraft, todayDraft, tomorrowDraft };

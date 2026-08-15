@@ -57,6 +57,18 @@ function categoryValue(record) {
   } : null;
 }
 
+function dinnerCategoryOptions(app, date) {
+  const rotation = calendar.dinnerRotation(date);
+  if (rotation.kind === "category") {
+    const category = categoryByCatId(app, rotation.catId);
+    return category ? [categoryValue(category)] : [];
+  }
+  if (rotation.kind === "choice") {
+    return rotation.catIds.map((catId) => categoryByCatId(app, catId)).filter(Boolean).map(categoryValue);
+  }
+  return [];
+}
+
 function dishValue(record) {
   return record ? { id: record.id, name: record.getString("name") } : null;
 }
@@ -73,6 +85,7 @@ function slotValue(app, date, meal) {
     status,
     selectionSource: assignment ? assignment.getString("selection_source") || null : null,
     category: categoryValue(category),
+    categoryOptions: meal === "dinner" ? dinnerCategoryOptions(app, date) : [],
     dish: dishValue(dish),
     assignmentId: assignment ? assignment.id : null,
   };
@@ -87,7 +100,7 @@ function dayValue(app, date) {
 function dayIsResolved(app, date) {
   return calendar.MEALS.every((meal) => {
     const slot = slotValue(app, date, meal);
-    return Boolean(slot.dish) || ["buy_food", "eating_out", "skipped"].indexOf(slot.status) !== -1;
+    return Boolean(slot.dish) || ["leftovers", "buy_food", "eating_out", "skipped"].indexOf(slot.status) !== -1;
   });
 }
 
@@ -269,6 +282,7 @@ function acceptSuggestion(app, suggestionId, memberId) {
   let assignmentId = "";
   app.runInTransaction((tx) => {
     const suggestion = tx.findRecordById("meal_suggestions", suggestionId);
+    if (suggestion.getString("outcome") !== "pending") throw new Error("suggestion_not_pending");
     const date = suggestion.getString("date");
     const meal = calendar.assertMeal(suggestion.getString("meal"));
     let dish = optionalById(tx, "dishes", suggestion.getString("dish"));
@@ -314,7 +328,7 @@ function acceptSuggestion(app, suggestionId, memberId) {
 function setSpecialStatus(app, date, meal, status) {
   calendar.parseDate(date);
   calendar.assertMeal(meal);
-  if (["buy_food", "eating_out", "skipped"].indexOf(status) === -1) throw new Error("invalid_status");
+  if (["leftovers", "buy_food", "eating_out", "skipped"].indexOf(status) === -1) throw new Error("invalid_status");
   const assignment = upsertAssignment(app, date, meal);
   const category = effectiveCategory(app, date, meal, assignment.id ? assignment : null);
   assignment.set("date", date);
@@ -327,25 +341,27 @@ function setSpecialStatus(app, date, meal, status) {
   return assignment;
 }
 
-function useLastMeal(app, date, meal) {
+function selectDinnerCategory(app, date, catId) {
   calendar.parseDate(date);
-  calendar.assertMeal(meal);
-  let source = first(app, "cooked_occurrences", "meal = {:meal} && date < {:date} && dish != ''", { meal, date }, "-date");
-  let dishId = source ? source.getString("dish") : "";
-  if (!dishId) {
-    source = first(app, "meal_assignments", "meal = {:meal} && date < {:date} && dish != ''", { meal, date }, "-date");
-    dishId = source ? source.getString("dish") : "";
-  }
-  const dish = optionalById(app, "dishes", dishId);
-  if (!dish) throw new Error("no_last_meal");
-  const assignment = upsertAssignment(app, date, meal);
-  const category = effectiveCategory(app, date, meal, assignment.id ? assignment : null);
+  const wanted = Number(catId);
+  const rotation = calendar.dinnerRotation(date);
+  const allowed = rotation.kind === "category"
+    ? [rotation.catId]
+    : rotation.kind === "choice" ? rotation.catIds : [];
+  if (allowed.indexOf(wanted) === -1) throw new Error("invalid_dinner_category");
+  const category = categoryByCatId(app, wanted);
+  if (!category) throw new Error("invalid_dinner_category");
+
+  const assignment = upsertAssignment(app, date, "dinner");
+  const changed = Boolean(assignment.id) && assignment.getString("category") !== category.id;
   assignment.set("date", date);
-  assignment.set("meal", meal);
-  assignment.set("dish", dish.id);
-  assignment.set("status", "planned");
-  assignment.set("selection_source", "last_meal");
-  if (category) assignment.set("category", category.id);
+  assignment.set("meal", "dinner");
+  assignment.set("category", category.id);
+  if (changed) {
+    assignment.set("dish", null);
+    assignment.set("status", "unplanned");
+  }
+  assignment.set("selection_source", "telegram");
   app.save(assignment);
   return assignment;
 }
@@ -393,9 +409,9 @@ module.exports = {
   generateSuggestions,
   isoNow,
   saveFeedback,
+  selectDinnerCategory,
   setSpecialStatus,
   slotValue,
   today,
-  useLastMeal,
   weekValue,
 };

@@ -23,6 +23,7 @@ const MEAL_META = {
 const SPECIAL = {
   unplanned: { icon: "✨", title: "Waiting for a suggestion", detail: "The bot will plan this meal." },
   skipped: { icon: "⏭️", title: "Skipped", detail: "No meal is planned." },
+  leftovers: { icon: "🥡", title: "Left over", detail: "Use what is already available." },
   buy_food: { icon: "🛒", title: "Buy food", detail: "Something easy from outside." },
   eating_out: { icon: "🍽️", title: "Eating out", detail: "No cooking needed." },
   planned: { icon: "✨", title: "Planned", detail: "" },
@@ -91,7 +92,7 @@ function MealCard({ date, slot, now, featured }: { date: string; slot: MealSlot;
   const expired = !slot.dish && slot.status === "unplanned" && mealHasPassed(date, slot.meal, now);
   const title = slot.dish?.name || (expired ? "No plan selected" : special.title);
   const detail = slot.dish
-    ? slot.status === "cooked" ? "Made today" : slot.selectionSource === "last_meal" ? "A recent favourite" : "Your exact meal plan"
+    ? slot.status === "cooked" ? "Made today" : "Your exact meal plan"
     : expired ? "The decision time for this meal has passed." : special.detail;
 
   return (
@@ -117,6 +118,11 @@ function MealCard({ date, slot, now, featured }: { date: string; slot: MealSlot;
                 Main category · {slot.category.emoji} {slot.category.name_en}
               </span>
             )}
+            {!slot.category && slot.categoryOptions.length > 0 && (
+              <span className="rounded-full bg-clay-soft px-3 py-1.5 text-xs font-extrabold text-clay-ink">
+                Choose category · {slot.categoryOptions.map((category) => `${category.emoji} ${category.name_en}`).join(" or ")}
+              </span>
+            )}
           </div>
           <h2 className={`font-display mt-2 font-bold leading-tight tracking-tight ${featured ? "text-3xl" : "text-2xl"}`}>
             {title}
@@ -124,7 +130,11 @@ function MealCard({ date, slot, now, featured }: { date: string; slot: MealSlot;
           <p className="mt-1.5 text-sm font-medium text-ink-soft">{detail}</p>
         </div>
       </div>
-      {slot.category?.name_fa && <p className="fa mt-4 text-right text-sm text-ink-faint">{slot.category.name_fa}</p>}
+      {(slot.category?.name_fa || slot.categoryOptions.length > 0) && (
+        <p className="fa mt-4 text-right text-sm text-ink-faint">
+          {slot.category?.name_fa || slot.categoryOptions.map((category) => category.name_fa).join(" یا ")}
+        </p>
+      )}
     </article>
   );
 }

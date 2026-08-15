@@ -116,8 +116,11 @@ test("recipe link import migration is private, complete, and reversible", { time
   assert.equal(dishFields.get("source_import").collectionId, imports.id);
   assert.equal(dishFields.get("source_import").hidden, true);
 
+  const assignments = migrated.find((collection) => collection.name === "meal_assignments");
+  assert.ok(fieldMap(assignments).get("status").values.includes("leftovers"));
+
   runPocketBase(pocketbase, [
-    "migrate", "down", "1",
+    "migrate", "down", "2",
     "--dir", dataDir,
     "--migrationsDir", path.join(ROOT, "pb_migrations"),
     "--hooksDir", hooksDir,
