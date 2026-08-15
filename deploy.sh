@@ -32,6 +32,7 @@ remote_commit="$(git rev-parse "origin/$branch")"
 
 echo "Verifying $(git rev-parse --short=12 "$commit") before deployment"
 npm ci
+npm audit --omit=dev --audit-level=high
 
 pocketbase_bin="${POCKETBASE_BIN:-}"
 test_runtime=""

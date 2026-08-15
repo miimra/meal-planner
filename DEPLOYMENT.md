@@ -24,8 +24,9 @@ Commit and push `main`, then run this from the development checkout:
 ```
 
 The script refuses to deploy a dirty tree, another branch, or a commit that is
-not exactly `origin/main`. Before touching production it runs `npm ci`, the
-complete test suite, and the Next.js production build.
+not exactly `origin/main`. Before touching production it runs `npm ci`, rejects
+high-severity production dependency advisories, runs the complete test suite,
+and creates the Next.js production build.
 
 Over SSH it fast-forwards the production checkout to the verified commit and
 runs `scripts/deploy-host.sh`. The host helper:
