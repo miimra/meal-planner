@@ -22,7 +22,7 @@ done
   exit 1
 }
 
-git fetch --prune origin "$branch"
+git fetch --prune origin "+refs/heads/$branch:refs/remotes/origin/$branch"
 commit="$(git rev-parse HEAD)"
 remote_commit="$(git rev-parse "origin/$branch")"
 [[ "$commit" == "$remote_commit" ]] || {
@@ -73,7 +73,7 @@ cd "$repo"
   exit 1
 }
 
-git fetch --prune origin "$branch"
+git fetch --prune origin "+refs/heads/$branch:refs/remotes/origin/$branch"
 if git show-ref --verify --quiet "refs/heads/$branch"; then
   git switch "$branch"
 else
