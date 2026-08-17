@@ -45,14 +45,14 @@ async function startMockServer() {
   const telegram = [];
   const mealRequests = [];
   const assistantRequests = [];
-  const imageRequests = [];
+  const photoRequests = [];
   const recipeRequests = [];
   const youtubeRequests = [];
   let recipeCategoryMode = "valid";
   let messageId = 100;
   let mealSequence = 0;
   let imageSequence = 0;
-  let failImages = 0;
+  let failPhotos = 0;
   const jpeg = Buffer.from(
     "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAEf/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABBQJ//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPwF//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPwF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJ//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPyF//9oADAMBAAIAAwAAABAf/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPxB//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPxB//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxB//9k=",
     "base64",
@@ -119,16 +119,32 @@ async function startMockServer() {
       return;
     }
 
-    if (request.url === "/openrouter/images") {
-      imageRequests.push(body);
-      if (failImages > 0) {
-        failImages -= 1;
+    if (request.url && request.url.startsWith("/wikipedia/w/api.php?")) {
+      photoRequests.push(request.url);
+      if (failPhotos > 0) {
+        failPhotos -= 1;
         response.writeHead(503, { "Content-Type": "application/json" });
         response.end(JSON.stringify({ error: "temporary" }));
         return;
       }
       response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ data: [{ b64_json: jpeg.toString("base64"), media_type: "image/jpeg" }] }));
+      response.end(JSON.stringify({ query: { pages: [
+        { title: "Not a photo", thumbnail: { source: "https://commons.wikimedia.org/logo.svg" } },
+        { title: "Dish", thumbnail: { source: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/b/Dish.jpg/1000px-Dish.jpg" } },
+      ] } }));
+      return;
+    }
+
+    if (request.url && request.url.startsWith("/openverse/v1/images/?")) {
+      photoRequests.push(request.url);
+      if (failPhotos > 0) {
+        failPhotos -= 1;
+        response.writeHead(503, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ error: "temporary" }));
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ results: [{ url: "https://live.staticflickr.com/1/dish_b.jpg" }] }));
       return;
     }
 
@@ -148,7 +164,8 @@ async function startMockServer() {
           message_id: call.multipart ? multipartMessageId : body.message_id,
           chat: { id: call.multipart ? -100123 : body.chat_id },
         };
-        if (call.multipart && /name="rich_message"/.test(bodyText)) {
+        const richMessage = call.multipart ? /name="rich_message"/.test(bodyText) : Boolean(body.rich_message);
+        if (richMessage) {
           imageSequence += 1;
           result.rich_message = { blocks: [{ photo: [{ file_id: "telegram-image-" + imageSequence }] }] };
         }
@@ -184,10 +201,10 @@ async function startMockServer() {
     telegram,
     mealRequests,
     assistantRequests,
-    imageRequests,
+    photoRequests,
+    failNextPhoto() { failPhotos += 2; },
     recipeRequests,
     youtubeRequests,
-    failNextImage() { failImages += 1; },
     setRecipeCategoryMode(value) { recipeCategoryMode = value; },
     close: () => new Promise((resolve) => server.close(resolve)),
   };
@@ -239,7 +256,6 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     APP_TIMEZONE: "Europe/Amsterdam",
     OPENROUTER_API_KEY: "test-openrouter-key",
     OPENROUTER_MODEL: "test/text-model",
-    OPENROUTER_IMAGE_MODEL: "test/image-model",
     OPENROUTER_BASE_URL: mock.baseUrl + "/openrouter",
     TELEGRAM_API_BASE_URL: mock.baseUrl,
     TELEGRAM_BOT_TOKEN: BOT_TOKEN,
@@ -247,6 +263,8 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     TELEGRAM_WEBHOOK_SECRET: SECRET,
     YOUTUBE_API_KEY: "test-youtube-key",
     YOUTUBE_API_BASE_URL: mock.baseUrl + "/youtube",
+    WIKIPEDIA_API_BASE_URL: mock.baseUrl + "/wikipedia",
+    OPENVERSE_API_BASE_URL: mock.baseUrl + "/openverse",
   };
   const setup = spawnSync(pocketbase, [
     "superuser", "upsert", ADMIN_EMAIL, ADMIN_PASSWORD,
@@ -478,23 +496,18 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
   });
 
   let firstSuggestion;
-  await t.test("suggestion opens lazily as rich embedded media and caches its image", async () => {
-    const imagesBefore = mock.imageRequests.length;
+  await t.test("suggestion opens as rich embedded media using a looked-up photo it then caches", async () => {
+    const photosBefore = mock.photoRequests.length;
     const suggestionUpdateId = nextUpdate();
     await webhook({ update_id: suggestionUpdateId, callback_query: { id: "suggest", from: { id: 111 }, data: `do:suggest:${tomorrow}:lunch`, message: { message_id: 101, chat: groupChat } } });
-    assert.equal(mock.imageRequests.length, imagesBefore + 1);
-    assert.equal(mock.imageRequests.at(-1).aspect_ratio, "1:1");
-    assert.equal(mock.imageRequests.at(-1).output_format, "jpeg");
-    assert.match(mock.imageRequests.at(-1).prompt, /no text/i);
-    const upload = mock.telegram.filter((call) => call.method === "editMessageText" && call.multipart).at(-1);
+    assert.equal(mock.photoRequests.length, photosBefore + 1, "a Wikipedia hit must not fall through to Openverse");
+    assert.match(mock.photoRequests.at(-1), /\/wikipedia\/w\/api\.php\?/);
+    const upload = mock.telegram.filter((call) => call.method === "editMessageText" && call.body && call.body.rich_message).at(-1);
     assert.ok(upload, JSON.stringify((await list("telegram_updates")).find((item) => item.update_id === String(suggestionUpdateId))) + "\n" + JSON.stringify(mock.telegram.slice(-8)) + "\n" + logs);
-    assert.equal(upload.multipart, true);
-    assert.match(upload.raw, /suggestion/);
-    assert.match(upload.raw, /rich_message/);
-    assert.match(upload.raw, /name="message_id"\r\n\r\n101/);
+    assert.equal(upload.multipart, undefined, "a photo URL needs no multipart upload");
+    assert.equal(upload.body.message_id, 101);
+    assert.equal(upload.body.rich_message.media[0].media.media, "https://upload.wikimedia.org/wikipedia/commons/thumb/a/b/Dish.jpg/1000px-Dish.jpg");
     firstSuggestion = (await list("meal_suggestions")).find((item) => item.date === tomorrow && item.meal === "lunch" && item.outcome === "pending");
-    assert.ok(firstSuggestion.generated_image);
-    assert.equal(firstSuggestion.generated_image_model, "test/image-model");
     assert.ok(firstSuggestion.telegram_image_file_id);
 
     const sendsBeforeDetails = mock.telegram.filter((call) => call.method === "sendMessage").length;
@@ -513,25 +526,29 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
 
   let secondSuggestion;
   await t.test("an accepted meal can be changed without creating callback response messages", async () => {
-    const firstImageCount = mock.imageRequests.length;
+    const firstPhotoCount = mock.photoRequests.length;
     const sendsBeforeAccept = mock.telegram.filter((call) => call.method === "sendMessage").length;
     await webhook({ update_id: nextUpdate(), callback_query: { id: "use-one", from: { id: 111 }, data: `sg:use:${firstSuggestion.id}`, message: { message_id: 101, chat: groupChat, rich_message: {} } } });
     let assignment = (await list("meal_assignments")).find((item) => item.date === tomorrow && item.meal === "lunch");
     const firstDish = assignment.dish;
     assert.ok(firstDish);
-    assert.equal(mock.imageRequests.length, firstImageCount, "accepting a cached card must not regenerate its image");
+    assert.equal(mock.photoRequests.length, firstPhotoCount, "accepting a cached card must not look its photo up again");
     const acceptedEdit = mock.telegram.filter((call) => call.method === "editMessageText" && !call.multipart).at(-1);
     assert.equal(acceptedEdit.body.message_id, 101);
     assert.equal(acceptedEdit.body.rich_message, undefined, "accepting must remove the suggestion image");
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBeforeAccept);
 
     await webhook({ update_id: nextUpdate(), callback_query: { id: "suggest-two", from: { id: 111 }, data: `do:suggest:${tomorrow}:lunch`, message: { message_id: 702, chat: groupChat } } });
+    const repeatPayload = JSON.parse(mock.mealRequests.at(-1).messages.find((message) => message.role === "user").content);
+    assert.ok(repeatPayload.doNotSuggest.lunch.includes(firstSuggestion.suggested_name), "the previous suggestion must be listed as off limits");
+    assert.equal(repeatPayload.dishes, undefined, "the whole dish library must not be shipped to the model");
+    assert.equal(repeatPayload.feedback, undefined);
+    assert.equal(repeatPayload.week, undefined);
     secondSuggestion = (await list("meal_suggestions")).find((item) => item.date === tomorrow && item.meal === "lunch" && item.outcome === "pending");
     assert.notEqual(secondSuggestion.id, firstSuggestion.id);
-    const mediaEdit = mock.telegram.filter((call) => call.method === "editMessageText" && call.multipart).at(-1);
+    const mediaEdit = mock.telegram.filter((call) => call.method === "editMessageText" && call.body && call.body.rich_message).at(-1);
     assert.ok(mediaEdit);
-    assert.equal(mediaEdit.multipart, true);
-    assert.match(mediaEdit.raw, /name="message_id"\r\n\r\n702/);
+    assert.equal(mediaEdit.body.message_id, 702);
     await webhook({ update_id: nextUpdate(), callback_query: { id: "use-two", from: { id: 111 }, data: `sg:use:${secondSuggestion.id}`, message: { message_id: 702, chat: groupChat, rich_message: {} } } });
     assignment = (await list("meal_assignments")).find((item) => item.date === tomorrow && item.meal === "lunch");
     assert.notEqual(assignment.dish, firstDish);
@@ -553,11 +570,61 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.ok(mock.telegram.filter((call) => call.method === "editMessageText" && (call.multipart || call.body && call.body.rich_message)).length >= 3);
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBeforeAnother);
 
-    mock.failNextImage();
+    mock.failNextPhoto();
     const callsBefore = mock.telegram.length;
     await webhook({ update_id: nextUpdate(), callback_query: { id: "fallback", from: { id: 111 }, data: `do:suggest:${tomorrow}:breakfast`, message: { message_id: 101, chat: groupChat } } });
     const fallbackCalls = mock.telegram.slice(callsBefore).filter((call) => call.method === "sendMessage" || call.method === "editMessageText");
     assert.ok(fallbackCalls.some((call) => /Suggestion details/.test(call.body.text) && /Use this/.test(JSON.stringify(call.body.reply_markup))));
+  });
+
+  await t.test("a known dish can be typed in without asking the AI for a suggestion", async () => {
+    const sendsBefore = mock.telegram.filter((call) => call.method === "sendMessage").length;
+    const mealRequestsBefore = mock.mealRequests.length;
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "own", from: { id: 111 }, data: `do:own:${tomorrow}:breakfast`, message: { message_id: 720, chat: groupChat } } });
+    const prompt = mock.telegram.filter((call) => call.method === "sendMessage").at(-1);
+    assert.equal(prompt.body.reply_markup.force_reply, true);
+    assert.match(prompt.body.text, new RegExp("What are you cooking for " + tomorrow + " · Breakfast\\?"));
+    assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBefore + 1);
+
+    await webhook({ update_id: nextUpdate(), message: {
+      message_id: 721,
+      from: { id: 111 },
+      chat: groupChat,
+      text: "  Nan   panir   sabzi ",
+      reply_to_message: { message_id: prompt.result.message_id, from: { id: 5, is_bot: true, username: "moghassemi_family_assistant_bot" }, text: prompt.body.text },
+    } });
+    assert.equal(mock.mealRequests.length, mealRequestsBefore, "typing a known dish must not call the model");
+    const assignment = (await list("meal_assignments")).find((item) => item.date === tomorrow && item.meal === "breakfast");
+    assert.equal(assignment.status, "planned");
+    assert.equal(assignment.selection_source, "telegram");
+    const dish = (await list("dishes")).find((item) => item.id === assignment.dish);
+    assert.equal(dish.name, "Nan panir sabzi", "whitespace is normalized before the dish is stored");
+    assert.equal(dish.lifecycle, "regular");
+    assert.match(mock.telegram.filter((call) => call.method === "sendMessage").at(-1).body.text, /Nan panir sabzi<\/b> is planned/);
+
+    // A reply to anything else must still be treated as an ordinary question.
+    await webhook({ update_id: nextUpdate(), message: {
+      message_id: 722,
+      from: { id: 111 },
+      chat: groupChat,
+      text: "And what about lunch?",
+      reply_to_message: { message_id: 700, from: { id: 5, is_bot: true, username: "moghassemi_family_assistant_bot" }, text: "🏠 Household assistant" },
+    } });
+    assert.equal(mock.assistantRequests.at(-1).question, "And what about lunch?");
+  });
+
+  await t.test("a past date cannot be planned through the own-dish reply", async () => {
+    const yesterday = addDays(today, -1);
+    const before = (await list("meal_assignments")).filter((item) => item.date === yesterday).length;
+    await webhook({ update_id: nextUpdate(), message: {
+      message_id: 723,
+      from: { id: 111 },
+      chat: groupChat,
+      text: "Lasagne",
+      reply_to_message: { message_id: 719, from: { id: 5, is_bot: true, username: "moghassemi_family_assistant_bot" }, text: `✍️ What are you cooking for ${yesterday} · Dinner?` },
+    } });
+    assert.equal((await list("meal_assignments")).filter((item) => item.date === yesterday).length, before);
+    assert.match(mock.telegram.filter((call) => call.method === "sendMessage").at(-1).body.text, /earlier date/);
   });
 
   await t.test("Leftovers stores only a neutral state and never guesses a dish", async () => {

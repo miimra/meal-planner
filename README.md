@@ -37,7 +37,6 @@ TELEGRAM_BOT_USERNAME=your_bot_username
 TELEGRAM_WEBHOOK_SECRET=
 OPENROUTER_API_KEY=
 OPENROUTER_MODEL=
-OPENROUTER_IMAGE_MODEL=openai/gpt-5-image-mini
 YOUTUBE_API_KEY=
 PUBLIC_BASE_URL=https://meal.number34.nl
 APP_TIMEZONE=Europe/Amsterdam
@@ -53,8 +52,8 @@ not grant access to arbitrary video transcripts.
 
 For production, keep these values in `/home/raptor/meal-planner/.env` on the
 printer server with mode `0600`. Docker Compose loads that file when recreating
-the container. Set `OPENROUTER_IMAGE_MODEL` when the Telegram bot's lazy
-suggestion images should use a dedicated OpenRouter image model.
+the container. Suggestion photos are looked up from Wikimedia thumbnails, so
+no image model or extra key is needed.
 
 ## Telegram setup
 
@@ -184,7 +183,6 @@ TELEGRAM_BOT_USERNAME=moghassemi_family_assistant_bot \
 TELEGRAM_WEBHOOK_SECRET=development-webhook-secret-12345 \
 OPENROUTER_API_KEY=test-key \
 OPENROUTER_MODEL=test/model \
-OPENROUTER_IMAGE_MODEL=openai/gpt-5-image-mini \
 /tmp/pb/pocketbase serve --http=127.0.0.1:8090
 ```
 

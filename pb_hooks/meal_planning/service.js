@@ -111,6 +111,21 @@ function weekValue(app, date) {
   return { start: bounds.start, end: bounds.end, days };
 }
 
+function unique(values) {
+  return values.filter((value, index) => Boolean(value) && values.indexOf(value) === index);
+}
+
+function suggestedNames(app, fromDate, meal, toDate) {
+  return app.findRecordsByFilter(
+    "meal_suggestions",
+    "meal = {:meal} && date >= {:from} && date <= {:to}",
+    "-created",
+    30,
+    0,
+    { meal, from: fromDate, to: toDate },
+  ).map((item) => item.getString("suggested_name"));
+}
+
 function aiContext(app, targetDate, meals) {
   const week = weekValue(app, targetDate);
   const dishes = app.findRecordsByFilter("dishes", "", "name", 0, 0).map((dish) => {
@@ -141,19 +156,12 @@ function aiContext(app, targetDate, meals) {
   const preferences = app.findRecordsByFilter("household_members", "active = true", "name", 0, 0)
     .map((member) => member.getString("preference_notes"))
     .filter((value) => Boolean(value));
-  const rejected = app.findRecordsByFilter(
-    "meal_suggestions",
-    "date = {:date} && outcome = 'rejected'",
-    "-created",
-    50,
-    0,
-    { date: targetDate },
-  ).map((item) => ({ meal: item.getString("meal"), name: item.getString("suggested_name") }));
   const occurrences = app.findRecordsByFilter("cooked_occurrences", "date < {:date}", "-date", 200, 0, { date: targetDate })
     .map((item) => ({ dishId: item.getString("dish") || null, date: item.getString("date") }));
   const requested = {};
   const servings = {};
   const candidates = {};
+  const avoid = {};
   const assignedDishIds = [];
   for (const day of week.days) {
     for (const meal of calendar.MEALS) {
@@ -168,16 +176,16 @@ function aiContext(app, targetDate, meals) {
     const categoryIds = requested[meal].category
       ? [requested[meal].category.catId]
       : (rotation && rotation.kind === "choice" ? rotation.catIds : []);
-    candidates[meal] = recommendation.rankCandidates(dishes, {
-      meal,
-      assignedDishIds,
-      categoryIds,
-      feedback,
-      occurrences,
-      targetDate,
-    });
+    const ranking = { meal, assignedDishIds, categoryIds, feedback, occurrences, targetDate };
+    // Anything already shown for this exact slot, plus everything suggested for
+    // this meal in the past fortnight: without this the model keeps returning
+    // the same top-scored dish every time "Another" is tapped.
+    const shown = suggestedNames(app, targetDate, meal, targetDate);
+    avoid[meal] = unique(shown.concat(suggestedNames(app, calendar.addDays(targetDate, -14), meal, targetDate)));
+    candidates[meal] = recommendation.rankCandidates(dishes, { ...ranking, excludeNames: shown });
+    if (!candidates[meal].length) candidates[meal] = recommendation.rankCandidates(dishes, ranking);
   }
-  return { targetDate, requested, servings, week, dishes, candidates, feedback, preferences, rejected };
+  return { targetDate, requested, servings, week, dishes, candidates, avoid, feedback, preferences };
 }
 
 function hasEligibleExistingDish(context, meal, dishId) {
@@ -274,6 +282,20 @@ function enrichDishFromSuggestion(dish, suggestion) {
   if (!existingIngredients.length) dish.set("ingredients", json.arrayField(suggestion, "ingredients"));
 }
 
+function ensureDish(tx, name, category) {
+  const existing = first(tx, "dishes", "name = {:name}", { name });
+  if (existing) return existing;
+  const dish = new Record(tx.findCollectionByNameOrId("dishes"));
+  dish.set("name", name);
+  dish.set("lifecycle", "regular");
+  if (category) {
+    dish.set("catId", category.getInt("catId"));
+    dish.set("categories", [category.id]);
+  }
+  tx.save(dish);
+  return dish;
+}
+
 function upsertAssignment(app, date, meal) {
   return assignmentFor(app, date, meal) || new Record(app.findCollectionByNameOrId("meal_assignments"));
 }
@@ -289,23 +311,9 @@ function acceptSuggestion(app, suggestionId, memberId) {
     const current = assignmentFor(tx, date, meal);
     const category = effectiveCategory(tx, date, meal, current);
 
-    if (!dish) {
-      dish = first(tx, "dishes", "name = {:name}", { name: suggestion.getString("suggested_name") });
-    }
-    if (!dish) {
-      dish = new Record(tx.findCollectionByNameOrId("dishes"));
-      dish.set("name", suggestion.getString("suggested_name"));
-      dish.set("lifecycle", "regular");
-      if (category) {
-        dish.set("catId", category.getInt("catId"));
-        dish.set("categories", [category.id]);
-      }
-      enrichDishFromSuggestion(dish, suggestion);
-      tx.save(dish);
-    } else {
-      enrichDishFromSuggestion(dish, suggestion);
-      tx.save(dish);
-    }
+    if (!dish) dish = ensureDish(tx, suggestion.getString("suggested_name"), category);
+    enrichDishFromSuggestion(dish, suggestion);
+    tx.save(dish);
 
     const assignment = current || new Record(tx.findCollectionByNameOrId("meal_assignments"));
     assignment.set("date", date);
@@ -321,6 +329,35 @@ function acceptSuggestion(app, suggestionId, memberId) {
     suggestion.set("outcome", "accepted");
     if (memberId) suggestion.set("member", memberId);
     tx.save(suggestion);
+  });
+  return app.findRecordById("meal_assignments", assignmentId);
+}
+
+function setManualDish(app, date, meal, dishName) {
+  calendar.parseDate(date);
+  calendar.assertMeal(meal);
+  const name = String(dishName || "").replace(/\s+/g, " ").trim().slice(0, 200);
+  if (!name) throw new Error("dish_name_required");
+  let assignmentId = "";
+  app.runInTransaction((tx) => {
+    const current = assignmentFor(tx, date, meal);
+    const category = effectiveCategory(tx, date, meal, current);
+    const dish = ensureDish(tx, name, category);
+    const assignment = current || new Record(tx.findCollectionByNameOrId("meal_assignments"));
+    assignment.set("date", date);
+    assignment.set("meal", meal);
+    assignment.set("dish", dish.id);
+    assignment.set("status", "planned");
+    assignment.set("selection_source", "telegram");
+    if (category) assignment.set("category", category.id);
+    tx.save(assignment);
+    assignmentId = assignment.id;
+    const pending = tx.findRecordsByFilter("meal_suggestions", "date = {:date} && meal = {:meal} && outcome = 'pending'", "", 0, 0, { date, meal });
+    for (const old of pending) {
+      old.set("outcome", "rejected");
+      old.set("rejection_reason", "manual_choice");
+      tx.save(old);
+    }
   });
   return app.findRecordById("meal_assignments", assignmentId);
 }
@@ -410,6 +447,7 @@ module.exports = {
   isoNow,
   saveFeedback,
   selectDinnerCategory,
+  setManualDish,
   setSpecialStatus,
   slotValue,
   today,

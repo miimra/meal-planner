@@ -39,6 +39,7 @@ function rankCandidates(dishes, options) {
     .map(Number)
     .filter((item) => Boolean(item));
   const assigned = new Set(settings.assignedDishIds || []);
+  const excluded = new Set((settings.excludeNames || []).map((name) => String(name).trim().toLowerCase()));
   const feedbackByDish = {};
   const cookedByDish = {};
 
@@ -56,6 +57,7 @@ function rankCandidates(dishes, options) {
   return (dishes || []).filter((dish) => {
     if (!dish || !dish.id || dish.lifecycle === "archived") return false;
     if (assigned.has(dish.id)) return false;
+    if (excluded.has(String(dish.name || "").trim().toLowerCase())) return false;
     if (dish.lifecycle === "want_to_try" && settings.meal) {
       if (Array.isArray(dish.mealTypes) && dish.mealTypes.length && dish.mealTypes.indexOf(settings.meal) === -1) return false;
       if (settings.meal !== "dinner" && (

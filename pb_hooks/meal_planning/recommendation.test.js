@@ -89,3 +89,12 @@ test("saved recipes respect extracted meal types and simple breakfast/lunch limi
   assert.deepEqual(recommendation.rankCandidates(candidates, { meal: "breakfast", targetDate: "2026-08-20" }).map((item) => item.id), ["quick"]);
   assert.deepEqual(recommendation.rankCandidates(candidates, { meal: "dinner", categoryId: 4, targetDate: "2026-08-20" }).map((item) => item.id), ["dinner"]);
 });
+
+test("names already suggested for this slot are dropped so 'Another' cannot repeat", () => {
+  const ranked = recommendation.rankCandidates(dishes, {
+    categoryId: 6,
+    targetDate: "2026-08-20",
+    excludeNames: ["  saved SALMON tray "],
+  });
+  assert.deepEqual(ranked.map((item) => item.id), ["liked"]);
+});

@@ -63,5 +63,33 @@ test("the scheduled check-in prioritizes tomorrow and offers direct planning", (
   assert.ok(text.indexOf("Tomorrow · 2026-08-16") < text.indexOf("Today · 2026-08-15"));
   assert.match(text, /Choose: 🍢 Iranian Grilled or 🍲 Heavy Iranian Stews/);
   assert.match(text, /Left over/);
-  assert.match(JSON.stringify(views.dailyKeyboard(today.date, tomorrow.date, true)), /Plan tomorrow/);
+  const keyboard = JSON.stringify(views.dailyKeyboard(today.date, tomorrow, true));
+  assert.match(keyboard, /"pick:meal:2026-08-16:dinner"/);
+  assert.match(keyboard, /"pick:meal:2026-08-16:breakfast"/);
+  assert.match(keyboard, /"pick:meal:2026-08-16:lunch"/);
+  assert.doesNotMatch(keyboard, /pick:date/);
+});
+
+test("the check-in ticks meals that are already decided", () => {
+  const day = {
+    date: "2026-08-16",
+    meals: {
+      breakfast: slot("breakfast", { dish: { name: "Eggs" }, status: "planned" }),
+      lunch: slot("lunch", { status: "eating_out" }),
+      dinner: slot("dinner", { category: { catId: 6, emoji: "🐟", name: "Fish & Shrimp" } }),
+    },
+  };
+  const keyboard = views.dailyKeyboard("2026-08-15", day, false);
+  assert.match(keyboard.inline_keyboard[1][0].text, /^✅ ☀️ Breakfast$/);
+  assert.match(keyboard.inline_keyboard[1][1].text, /^✅ 🥪 Lunch$/);
+  assert.match(keyboard.inline_keyboard[0][0].text, /^🌙 Dinner · Fish & Shrimp$/);
+});
+
+test("an own-dish reply round trip carries its own date and meal", () => {
+  const prompt = views.ownDishText("2026-08-16", "dinner");
+  assert.deepEqual(views.parseOwnDishText(prompt), { date: "2026-08-16", meal: "dinner" });
+  assert.equal(views.parseOwnDishText("What are you cooking for tomorrow?"), null);
+  assert.equal(views.parseOwnDishText(""), null);
+  assert.match(views.ownDishSavedText("2026-08-16", "dinner", "Ghormeh <sabzi>"), /Ghormeh &lt;sabzi&gt;/);
+  assert.match(JSON.stringify(views.actionKeyboard("2026-08-16", "dinner", slot("dinner"))), /do:own:2026-08-16:dinner/);
 });

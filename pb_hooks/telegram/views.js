@@ -50,10 +50,7 @@ function weekText(week) {
 
 function homeText(today, tomorrow, dailyEnabled) {
   const todayRateable = calendar.MEALS.filter((meal) => today.meals[meal].dish).length;
-  const tomorrowResolved = calendar.MEALS.filter((meal) => {
-    const slot = tomorrow.meals[meal];
-    return slot.dish || ["leftovers", "buy_food", "eating_out", "skipped"].indexOf(slot.status) !== -1;
-  }).length;
+  const tomorrowResolved = calendar.MEALS.filter((meal) => decided(tomorrow.meals[meal])).length;
   return [
     "🏠 <b>Household assistant</b>",
     "<i>Europe/Amsterdam · " + today.date + "</i>",
@@ -81,10 +78,7 @@ function homeKeyboard(today, tomorrow, canRateToday) {
 }
 
 function dailyText(today, tomorrow) {
-  const tomorrowResolved = calendar.MEALS.filter((meal) => {
-    const slot = tomorrow.meals[meal];
-    return slot.dish || ["leftovers", "buy_food", "eating_out", "skipped"].indexOf(slot.status) !== -1;
-  }).length;
+  const tomorrowResolved = calendar.MEALS.filter((meal) => decided(tomorrow.meals[meal])).length;
   const todayRateable = calendar.MEALS.filter((meal) => today.meals[meal].dish).length;
   return [
     "🌆 <b>Daily meal check-in · 18:30</b>",
@@ -98,8 +92,25 @@ function dailyText(today, tomorrow) {
   ].join("\n");
 }
 
+function decided(slot) {
+  return Boolean(slot.dish) || ["leftovers", "buy_food", "eating_out", "skipped"].indexOf(slot.status) !== -1;
+}
+
+function planButton(date, slot) {
+  const category = slot.meal === "dinner" && slot.category ? " · " + slot.category.name : "";
+  return {
+    text: (decided(slot) ? "✅ " : "") + ICONS[slot.meal] + " " + LABELS[slot.meal] + category,
+    callback_data: "pick:meal:" + date + ":" + slot.meal,
+  };
+}
+
+// `tomorrow` is a full day value so the check-in can link straight into each
+// meal instead of dropping the reader back at the top of the menu.
 function dailyKeyboard(today, tomorrow, canRateToday) {
-  const rows = [[{ text: "✏️ Plan tomorrow", callback_data: "pick:date:" + tomorrow }]];
+  const rows = [
+    [planButton(tomorrow.date, tomorrow.meals.dinner)],
+    [planButton(tomorrow.date, tomorrow.meals.breakfast), planButton(tomorrow.date, tomorrow.meals.lunch)],
+  ];
   if (canRateToday) rows.push([{ text: "⭐ Rate today’s meals", callback_data: "fb:date:" + today }]);
   rows.push(
     [{ text: "📅 This week", callback_data: "nav:week" }, { text: "🍽 Meals", callback_data: "nav:meals" }],
@@ -316,12 +327,31 @@ function actionKeyboard(date, meal, slot) {
     }
   }
   rows.push(
-    [{ text: "✨ Suggest", callback_data: "do:suggest:" + date + ":" + meal }, { text: "🥡 Leftovers", callback_data: "do:leftovers:" + date + ":" + meal }],
-    [{ text: "🛒 Buy", callback_data: "do:buy:" + date + ":" + meal }, { text: "🍽 Eat out", callback_data: "do:out:" + date + ":" + meal }],
-    [{ text: "⏭ Skip", callback_data: "do:skip:" + date + ":" + meal }],
+    [{ text: "✨ Suggest", callback_data: "do:suggest:" + date + ":" + meal }, { text: "✍️ I’ll cook…", callback_data: "do:own:" + date + ":" + meal }],
+    [{ text: "🥡 Leftovers", callback_data: "do:leftovers:" + date + ":" + meal }, { text: "🛒 Buy", callback_data: "do:buy:" + date + ":" + meal }],
+    [{ text: "🍽 Eat out", callback_data: "do:out:" + date + ":" + meal }, { text: "⏭ Skip", callback_data: "do:skip:" + date + ":" + meal }],
     [{ text: "‹ Choose meal", callback_data: "pick:date:" + date }, { text: "🏠 Home", callback_data: "nav:home" }],
   );
   return { inline_keyboard: rows };
+}
+
+// The prompt message carries its own date and meal, so a force_reply round trip
+// needs no stored conversation state.
+const OWN_DISH_PROMPT = /What are you cooking for (\d{4}-\d{2}-\d{2}) · (Breakfast|Lunch|Dinner)\?/;
+
+function ownDishText(date, meal) {
+  return "✍️ What are you cooking for " + date + " · " + LABELS[meal] + "?\n\nReply to this message with the dish name.";
+}
+
+function parseOwnDishText(text) {
+  const match = OWN_DISH_PROMPT.exec(String(text || ""));
+  if (!match) return null;
+  const meal = calendar.MEALS.filter((item) => LABELS[item] === match[2])[0];
+  return meal ? { date: match[1], meal } : null;
+}
+
+function ownDishSavedText(date, meal, dishName) {
+  return "✅ <b>" + escape(dishName) + "</b> is planned for " + escape(date + " · " + LABELS[meal]) + ".";
 }
 
 function dayKeyboard(date) {
@@ -418,6 +448,9 @@ module.exports = {
   mealKeyboard,
   mealsKeyboard,
   mealsText,
+  ownDishSavedText,
+  ownDishText,
+  parseOwnDishText,
   recipeCategoryKeyboard,
   recipeImportAnalyzingText,
   recipeImportAlreadySavedText,

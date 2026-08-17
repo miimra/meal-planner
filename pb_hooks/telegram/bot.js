@@ -2,7 +2,7 @@
 
 const calendar = require(`${__hooks}/meal_planning/calendar.js`);
 const planning = require(`${__hooks}/meal_planning/service.js`);
-const imageGenerator = require(`${__hooks}/openrouter/image.js`);
+const photos = require(`${__hooks}/meal_planning/photo.js`);
 const assistant = require(`${__hooks}/telegram/assistant.js`);
 const activity = require(`${__hooks}/telegram/activity.js`);
 const client = require(`${__hooks}/telegram/client.js`);
@@ -39,6 +39,7 @@ function friendlyError(error) {
   if (code === "dinner_category_required") return "Choose the dinner category first.";
   if (code === "invalid_dinner_category") return "That category does not belong to this dinner date.";
   if (code === "meal_not_planned") return "That meal has no planned dish to rate.";
+  if (code === "dish_name_required") return "Send the dish name as plain text and I’ll plan it.";
   if (code === "recipe_import_category_required") return "Choose a household category before saving this recipe.";
   if (code.indexOf("recipe_import_") === 0) return "This recipe card is no longer available for that action.";
   if (code.indexOf("openrouter") === 0 || code === "invalid_ai_response") return "I couldn’t do that right now. Please try again later.";
@@ -105,11 +106,11 @@ function homeView(app, destination) {
 
 function dailyView(app) {
   const today = planning.today();
-  const tomorrow = calendar.addDays(today, 1);
   const todayValue = planning.dayValue(app, today);
+  const tomorrowValue = planning.dayValue(app, calendar.addDays(today, 1));
   return {
-    text: views.dailyText(todayValue, planning.dayValue(app, tomorrow)),
-    keyboard: views.dailyKeyboard(today, tomorrow, calendar.MEALS.some((meal) => todayValue.meals[meal].dish)),
+    text: views.dailyText(todayValue, tomorrowValue),
+    keyboard: views.dailyKeyboard(today, tomorrowValue, calendar.MEALS.some((meal) => todayValue.meals[meal].dish)),
   };
 }
 
@@ -155,32 +156,8 @@ function telegramPhotoId(result) {
   return found;
 }
 
-function storedImageFile(app, suggestion) {
-  const filename = suggestion.getString("generated_image");
-  if (!filename) return null;
-  const filesystem = app.newFilesystem();
-  return {
-    file: filesystem.getReuploadableFile(suggestion.baseFilesPath() + "/" + filename, true),
-    close: () => filesystem.close(),
-  };
-}
-
-function ensureSuggestionImage(app, suggestion) {
-  const cachedFileId = suggestion.getString("telegram_image_file_id");
-  if (cachedFileId) return { photo: cachedFileId, generated: false };
-  if (suggestion.getString("generated_image")) {
-    const stored = storedImageFile(app, suggestion);
-    return { photo: stored.file, close: stored.close, generated: false };
-  }
-  const image = imageGenerator.generate(suggestion.getString("suggested_name"), require(`${__hooks}/shared/json.js`).arrayField(suggestion, "ingredients"));
-  const file = $filesystem.fileFromBytes(image.bytes, "suggestion-" + suggestion.id + "." + image.extension);
-  suggestion.set("generated_image", file);
-  suggestion.set("generated_image_model", image.model);
-  app.save(suggestion);
-  return {
-    photo: $filesystem.fileFromBytes(image.bytes, "suggestion-upload-" + suggestion.id + "." + image.extension),
-    generated: true,
-  };
+function suggestionPhoto(suggestion) {
+  return suggestion.getString("telegram_image_file_id") || photos.lookup(suggestion.getString("suggested_name"));
 }
 
 function storeTelegramImageId(app, suggestion, result) {
@@ -195,25 +172,18 @@ function showSuggestion(app, destination, message, suggestion, selected) {
   const slot = planning.slotValue(app, suggestion.getString("date"), suggestion.getString("meal"));
   const caption = views.suggestionCaption(suggestion, slot, selected);
   const keyboard = views.suggestionKeyboard(suggestion, selected);
-  let image = null;
+  let photo = "";
   try {
-    image = ensureSuggestionImage(app, suggestion);
+    photo = suggestionPhoto(suggestion);
   } catch (error) {
-    app.logger().warn("Suggestion image unavailable", "suggestion", suggestion.id, "error_code", safeCode(error));
+    app.logger().warn("Suggestion photo unavailable", "suggestion", suggestion.id, "error_code", safeCode(error));
   }
-  if (image && image.photo) {
-    let result;
-    try {
-      result = client.editMessageRichPhoto(chatId(destination), message.message_id, image.photo, caption, keyboard);
-    } finally {
-      if (image.close) image.close();
-    }
+  if (photo) {
+    const result = client.editMessageRichPhoto(chatId(destination), message.message_id, photo, caption, keyboard);
     storeTelegramImageId(app, suggestion, result);
     return result;
   }
-
-  const fallback = caption + "\n\n<i>Photo unavailable for this suggestion.</i>\n\n" + views.suggestionDetails(suggestion, slot);
-  return editPanel(destination, message, fallback, keyboard);
+  return editPanel(destination, message, caption + "\n\n" + views.suggestionDetails(suggestion, slot), keyboard);
 }
 
 function markSuggestionSelected(app, destination, message, suggestion) {
@@ -412,6 +382,10 @@ function handleCallback(app, user, destination, query) {
         const suggestion = planning.generateSuggestions(app, parts[2], [parts[3]])[0];
         showSuggestion(app, destination, query.message, suggestion, false);
         client.answerCallback(query.id, "Suggestion ready", false);
+      } else if (parts[1] === "own") {
+        calendar.assertMeal(parts[3]);
+        client.sendMessage(chatId(destination), views.ownDishText(parts[2], parts[3]), { force_reply: true, selective: true, input_field_placeholder: "Dish name" });
+        client.answerCallback(query.id, "Reply with the dish name", false);
       } else {
         performAction(app, parts[1], parts[2], parts[3]);
         editHome(app, destination, query.message);
@@ -521,6 +495,27 @@ function handlePhoto(app, user, destination, message) {
   return true;
 }
 
+function handleOwnDish(app, destination, message) {
+  const replied = message && message.reply_to_message;
+  if (!replied || !commands.replyTargetsBot(message)) return false;
+  const target = views.parseOwnDishText(replied.text);
+  const name = String(message.text || "").trim();
+  if (!target || !name || name.charAt(0) === "/") return false;
+  try {
+    assertPlanningDate(target.date);
+    const assignment = planning.setManualDish(app, target.date, target.meal, name);
+    const dish = app.findRecordById("dishes", assignment.getString("dish"));
+    sendPanel(destination, views.ownDishSavedText(target.date, target.meal, dish.getString("name")), views.dayKeyboard(target.date), message.message_id);
+    message._activityAction = "planned own dish for " + target.date + " " + target.meal;
+  } catch (error) {
+    const failure = friendlyError(error);
+    if (!failure) throw error;
+    sendPanel(destination, failure, { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] }, message.message_id);
+    message._activityAction = "rejected own dish: " + failure;
+  }
+  return true;
+}
+
 function handleQuestion(app, destination, message) {
   const question = commands.questionText(message, destination.getString("type"), commands.botUsername());
   if (question === null) return false;
@@ -576,7 +571,11 @@ function handle(app, update) {
     if (kind === "photo") handled = handlePhoto(app, user, destination, update.message);
     if (kind === "message") {
       const parsed = commands.parseCommand(update.message.text);
-      handled = parsed ? handleCommand(app, user, destination, update.message, parsed) : (handleRecipeLink(app, user, destination, update.message) || handleQuestion(app, destination, update.message));
+      handled = parsed
+        ? handleCommand(app, user, destination, update.message, parsed)
+        : (handleOwnDish(app, destination, update.message)
+          || handleRecipeLink(app, user, destination, update.message)
+          || handleQuestion(app, destination, update.message));
     }
     finishUpdate(app, updateRecord, handled ? "processed" : "ignored");
     activity.completed(app, update, chat, activity.action(update, handled));
