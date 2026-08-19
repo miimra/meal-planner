@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Vazirmatn, Syne } from "next/font/google";
+import { Vazirmatn, Readex_Pro } from "next/font/google";
 import "./globals.css";
 import BottomNav from "./components/BottomNav";
 
@@ -11,10 +11,12 @@ const vazirmatn = Vazirmatn({
   display: "swap",
 });
 
-// Syne for display: angular and geometric, an echo of the girih lattice.
-const syne = Syne({
+// Readex Pro for display: humanist and warm, and drawn for Latin sitting
+// beside Arabic — so an English heading next to a Persian one reads as one
+// voice rather than two fonts arguing.
+const readex = Readex_Pro({
   subsets: ["latin"],
-  weight: ["600", "700", "800"],
+  weight: ["500", "600", "700"],
   variable: "--font-display",
   display: "swap",
 });
@@ -41,7 +43,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${vazirmatn.variable} ${syne.variable} antialiased`}>
+      <body className={`${vazirmatn.variable} ${readex.variable} antialiased`}>
         <div className="relative mx-auto min-h-dvh max-w-lg px-4 pb-28 pt-6">{children}</div>
         <BottomNav />
       </body>
