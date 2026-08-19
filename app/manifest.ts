@@ -4,13 +4,13 @@ export const dynamic = "force-static";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Family Meal Plan",
-    short_name: "Meals",
+    name: "Sofreh — Family Meal Plan",
+    short_name: "Sofreh",
     description: "Today, tomorrow, and the family meal plan for the week.",
     start_url: "/",
     display: "standalone",
-    background_color: "#fdf1f7",
-    theme_color: "#cf4fa6",
+    background_color: "#0a131e",
+    theme_color: "#0a131e",
     orientation: "portrait",
     icons: [
       {

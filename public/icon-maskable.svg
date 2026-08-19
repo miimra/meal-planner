@@ -1,24 +1,25 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="mbg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f584c6"/>
-      <stop offset="1" stop-color="#cf4fa6"/>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#16324a"/>
+      <stop offset="0.55" stop-color="#1b2a5c"/>
+      <stop offset="1" stop-color="#0a131e"/>
+    </linearGradient>
+    <linearGradient id="bowl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffce87"/>
+      <stop offset="1" stop-color="#e2870a"/>
     </linearGradient>
   </defs>
-  <rect width="512" height="512" fill="url(#mbg)"/>
-  <!-- keep the art within the maskable safe zone (~62%) -->
-  <g transform="translate(256 268) scale(0.6) translate(-256 -256)">
-    <path d="M120 250 h272 a136 136 0 0 1 -272 0 z" fill="#fff"/>
-    <ellipse cx="256" cy="250" rx="136" ry="24" fill="#ffe4d0"/>
-    <g fill="#cf4fa6">
-      <circle cx="214" cy="300" r="11"/>
-      <circle cx="298" cy="300" r="11"/>
-    </g>
-    <path d="M232 322 q24 22 48 0" stroke="#cf4fa6" stroke-width="9" fill="none" stroke-linecap="round"/>
-    <g fill="#ffb3d9">
-      <circle cx="192" cy="318" r="9"/>
-      <circle cx="320" cy="318" r="9"/>
-    </g>
-    <path d="M196 150 l10 26 26 10 -26 10 -10 26 -10 -26 -26 -10 26 -10 z" fill="#ffe4d0"/>
+  <rect width="512" height="512" fill="url(#tile)"/>
+  <!-- everything inside the 80% safe zone for maskable icons -->
+  <g fill="none" stroke="#7d86ff" stroke-width="11" opacity="0.85">
+    <rect x="171" y="171" width="170" height="170" rx="5"/>
+    <rect x="171" y="171" width="170" height="170" rx="5" transform="rotate(45 256 256)"/>
+  </g>
+  <path d="M191 254 h130 a65 65 0 0 1 -130 0 z" fill="url(#bowl)"/>
+  <ellipse cx="256" cy="254" rx="65" ry="12" fill="#ffefd2"/>
+  <g stroke="#ffce87" stroke-width="9" stroke-linecap="round" fill="none" opacity="0.9">
+    <path d="M232 222 q11 -14 0 -28 q-11 -14 0 -28"/>
+    <path d="M282 222 q11 -14 0 -28 q-11 -14 0 -28"/>
   </g>
 </svg>
