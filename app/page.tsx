@@ -44,6 +44,9 @@ const DAY_END = 23 * 60;
 const arcPercent = (minutes: number) =>
   Math.min(100, Math.max(0, ((minutes - DAY_START) / (DAY_END - DAY_START)) * 100));
 
+const RAIL_TOP = "2.6rem";
+const RAIL_CENTER = "calc(2.6rem + 1.5px)";
+
 const step = (index: number) => ({ "--i": index }) as CSSProperties;
 
 export default function HomePage() {
@@ -252,13 +255,19 @@ function DayArc({ day, now }: { day: PlanDay; now: Date }) {
   const minutes = amsterdamMinutes(now);
   const progress = arcPercent(minutes);
 
+  // Everything on the arc hangs off the rail's centre line. Emoji and clock are
+  // positioned away from the dot rather than stacked above it, so no marker can
+  // drift off the line when emoji metrics differ between platforms.
+  const onRail = "absolute -translate-x-1/2 -translate-y-1/2";
+
   return (
     <section className="rise" style={step(4)} aria-label="Today at a glance">
       <div className="relative h-[4.75rem] rounded-[28px] border border-line bg-surface/60 px-6 backdrop-blur-sm">
-        <div className="absolute inset-x-6 top-[2.6rem] h-[3px] rounded-full bg-line" />
+        <div className="absolute inset-x-6 h-[3px] rounded-full bg-line" style={{ top: RAIL_TOP }} />
         <div
-          className="draw absolute left-6 top-[2.6rem] h-[3px] rounded-full"
+          className="draw absolute left-6 h-[3px] rounded-full"
           style={{
+            top: RAIL_TOP,
             width: `calc((100% - 3rem) * ${progress / 100})`,
             background: "linear-gradient(90deg, var(--lapis), var(--saffron))",
           }}
@@ -271,24 +280,36 @@ function DayArc({ day, now }: { day: PlanDay; now: Date }) {
             return (
               <div
                 key={meal}
-                className="pop absolute top-[0.6rem] flex w-16 -translate-x-1/2 flex-col items-center"
-                style={{ left: `${arcPercent(meta.at)}%`, animationDelay: `${0.6 + MEALS.indexOf(meal) * 0.12}s` }}
+                className={`pop ${onRail}`}
+                style={{
+                  top: RAIL_CENTER,
+                  left: `${arcPercent(meta.at)}%`,
+                  animationDelay: `${0.6 + MEALS.indexOf(meal) * 0.12}s`,
+                }}
               >
-                <span className={`text-base leading-none ${done ? "opacity-45" : ""}`}>{meta.icon}</span>
                 <span
-                  className="mt-[0.45rem] h-[9px] w-[9px] rounded-full border-2"
+                  className="block h-[9px] w-[9px] rounded-full border-2"
                   style={{
                     borderColor: done ? "var(--saffron)" : "var(--line)",
                     background: slot.dish || slot.status === "cooked" ? "var(--saffron)" : "var(--surface)",
                   }}
                 />
-                <span className="tick mt-[0.35rem] text-[0.5625rem] text-ink-faint">{meta.clock}</span>
+                <span
+                  className={`absolute bottom-full left-1/2 mb-[0.45rem] -translate-x-1/2 text-base leading-none ${
+                    done ? "opacity-45" : ""
+                  }`}
+                >
+                  {meta.icon}
+                </span>
+                <span className="tick absolute left-1/2 top-full mt-[0.45rem] -translate-x-1/2 text-[0.5625rem] text-ink-faint">
+                  {meta.clock}
+                </span>
               </div>
             );
           })}
           <div
-            className="absolute top-[2.3rem] -translate-x-1/2"
-            style={{ left: `${progress}%`, transition: "left 1s cubic-bezier(0.16,1,0.3,1)" }}
+            className={onRail}
+            style={{ top: RAIL_CENTER, left: `${progress}%`, transition: "left 1s cubic-bezier(0.16,1,0.3,1)" }}
           >
             <span className="relative flex h-[13px] w-[13px] items-center justify-center">
               <span className="ping absolute h-full w-full rounded-full bg-anar" aria-hidden />
