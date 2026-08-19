@@ -1,6 +1,8 @@
 "use strict";
 
-const MEALS = ["breakfast", "lunch", "dinner"];
+// Dinner is the only meal the bot plans. Breakfast and lunch rows written by
+// earlier versions stay in the database; nothing reads or writes them now.
+const MEALS = ["dinner"];
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -51,13 +53,23 @@ function assertMeal(value) {
 }
 
 function servingProfile(value, meal) {
-  const date = typeof value === "string" ? parseDate(value) : value;
+  parseDate(typeof value === "string" ? value : dateKey(value));
   assertMeal(meal);
-  const day = date.getUTCDay();
-  if (meal === "lunch" && day >= 1 && day <= 5) {
-    return { adults: 2, babies: 0, includesBaby: false, label: "2 adults" };
-  }
   return { adults: 2, babies: 1, includesBaby: true, label: "2 adults + 1 baby" };
 }
 
-module.exports = { MEALS, addDays, assertMeal, dateKey, dinnerRotation, parseDate, servingProfile, weekBounds };
+// Sunday's message plans the week that starts the next morning; every other
+// day the open week is simply the one we are standing in.
+function planningWeekStart(value) {
+  const date = typeof value === "string" ? parseDate(value) : value;
+  const isSunday = date.getUTCDay() === 0;
+  return weekBounds(isSunday ? addDays(date, 1) : date).start;
+}
+
+function weekDates(start) {
+  const dates = [];
+  for (let i = 0; i < 7; i += 1) dates.push(addDays(start, i));
+  return dates;
+}
+
+module.exports = { MEALS, addDays, assertMeal, dateKey, dinnerRotation, parseDate, planningWeekStart, servingProfile, weekBounds, weekDates };

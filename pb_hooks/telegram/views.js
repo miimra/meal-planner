@@ -58,10 +58,10 @@ function homeText(today, tomorrow, dailyEnabled) {
     "<b>Today</b> · " + todayRateable + " meal" + (todayRateable === 1 ? "" : "s") + " available for feedback",
     calendar.MEALS.map((meal) => slotLine(today.meals[meal])).join("\n"),
     "",
-    "<b>Tomorrow · " + tomorrow.date + "</b> · " + tomorrowResolved + "/3 decisions",
+    "<b>Tomorrow · " + tomorrow.date + "</b> · " + tomorrowResolved + "/" + calendar.MEALS.length + " decided",
     calendar.MEALS.map((meal) => slotLine(tomorrow.meals[meal])).join("\n"),
     "",
-    "Daily 18:30 update: <b>" + (dailyEnabled ? "On" : "Off") + "</b>",
+    "Sunday plan message: <b>" + (dailyEnabled ? "On" : "Off") + "</b>",
   ].join("\n");
 }
 
@@ -77,20 +77,7 @@ function homeKeyboard(today, tomorrow, canRateToday) {
   return { inline_keyboard: rows };
 }
 
-function dailyText(today, tomorrow) {
-  const tomorrowResolved = calendar.MEALS.filter((meal) => decided(tomorrow.meals[meal])).length;
-  const todayRateable = calendar.MEALS.filter((meal) => today.meals[meal].dish).length;
-  return [
-    "🌆 <b>Daily meal check-in · 18:30</b>",
-    "<i>Europe/Amsterdam</i>",
-    "",
-    "<b>Tomorrow · " + tomorrow.date + "</b> · " + tomorrowResolved + "/3 decided",
-    calendar.MEALS.map((meal) => slotLine(tomorrow.meals[meal])).join("\n"),
-    "",
-    "<b>Today · " + today.date + "</b> · " + todayRateable + " meal" + (todayRateable === 1 ? "" : "s") + " available for feedback",
-    calendar.MEALS.map((meal) => slotLine(today.meals[meal])).join("\n"),
-  ].join("\n");
-}
+const WEEKDAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function decided(slot) {
   return Boolean(slot.dish) || ["leftovers", "buy_food", "eating_out", "skipped"].indexOf(slot.status) !== -1;
@@ -104,19 +91,56 @@ function planButton(date, slot) {
   };
 }
 
-// `tomorrow` is a full day value so the check-in can link straight into each
-// meal instead of dropping the reader back at the top of the menu.
-function dailyKeyboard(today, tomorrow, canRateToday) {
-  const rows = [
-    [planButton(tomorrow.date, tomorrow.meals.dinner)],
-    [planButton(tomorrow.date, tomorrow.meals.breakfast), planButton(tomorrow.date, tomorrow.meals.lunch)],
-  ];
-  if (canRateToday) rows.push([{ text: "⭐ Rate today’s meals", callback_data: "fb:date:" + today }]);
-  rows.push(
-    [{ text: "📅 This week", callback_data: "nav:week" }, { text: "🍽 Meals", callback_data: "nav:meals" }],
-    [{ text: "⚙️ Settings", callback_data: "nav:settings" }, { text: "🔄 Current dashboard", callback_data: "nav:home" }],
-  );
+function weekdayLabel(date) {
+  return WEEKDAY[(calendar.parseDate(date).getUTCDay() + 6) % 7];
+}
+
+function openDinners(week) {
+  return week.days.filter((day) => !decided(day.meals.dinner));
+}
+
+function dinnerCategoryLine(slot) {
+  if (slot.category) return "\n      🧭 " + escape(slot.category.emoji + " " + slot.category.name);
+  if (slot.categoryOptions && slot.categoryOptions.length) {
+    return "\n      🧭 " + slot.categoryOptions.map((category) => escape(category.emoji + " " + category.name)).join(" or ");
+  }
+  return "";
+}
+
+function weeklyPlanText(week, heading) {
+  const open = openDinners(week);
+  const lines = ["🗓 <b>" + escape(heading) + "</b>", "<i>" + week.start + " → " + week.end + "</i>", ""];
+  for (const day of week.days) {
+    const slot = day.meals.dinner;
+    const name = slot.dish
+      ? escape(slot.dish.name)
+      : "<i>" + escape(STATUS[slot.status] || STATUS.unplanned) + "</i>";
+    lines.push((decided(slot) ? "✅" : "⬜") + " <b>" + weekdayLabel(day.date) + "</b> " + name + (decided(slot) ? "" : dinnerCategoryLine(slot)));
+  }
+  lines.push("");
+  lines.push(open.length
+    ? "<b>" + open.length + " dinner" + (open.length === 1 ? "" : "s") + " still open.</b> Tap a day to plan it."
+    : "🌿 <b>Every dinner is planned.</b>");
+  return lines.join("\n");
+}
+
+function weeklyPlanKeyboard(week) {
+  const rows = [];
+  const open = openDinners(week);
+  for (let index = 0; index < open.length; index += 2) {
+    rows.push(open.slice(index, index + 2).map((day) => ({
+      text: weekdayLabel(day.date) + " " + day.date.slice(5),
+      callback_data: "pick:meal:" + day.date + ":dinner",
+    })));
+  }
+  rows.push([{ text: "📅 Full week", callback_data: "nav:week" }, { text: "🏠 Home", callback_data: "nav:home" }]);
   return { inline_keyboard: rows };
+}
+
+function nudgeText(week) {
+  const open = openDinners(week);
+  const days = open.map((day) => weekdayLabel(day.date)).join(", ");
+  return "⬜ <b>" + open.length + " dinner" + (open.length === 1 ? "" : "s") + " still open</b>\n" + escape(days) + "\n\nTap a day to pick something.";
 }
 
 function mealsText() {
@@ -126,6 +150,7 @@ function mealsText() {
 function mealsKeyboard(today, tomorrow) {
   return { inline_keyboard: [
     [{ text: "Today", callback_data: "nav:day:" + today }, { text: "Tomorrow", callback_data: "nav:day:" + tomorrow }],
+    [{ text: "🗓 Plan the week", callback_data: "nav:planweek" }],
     [{ text: "📅 This week", callback_data: "nav:week" }, { text: "✏️ Change a meal", callback_data: "nav:change" }],
     [{ text: "🔖 Want to try", callback_data: "nav:saved" }],
     [{ text: "🏠 Home", callback_data: "nav:home" }],
@@ -362,7 +387,7 @@ function dayKeyboard(date) {
 }
 
 function settingsText(enabled) {
-  return "⚙️ <b>Settings</b>\n\nDaily dashboard at <b>18:30 Europe/Amsterdam</b>: <b>" + (enabled ? "On" : "Off") + "</b>\n\nUse /home for the dashboard, /meals for planning, /ask for questions, and /settings here.";
+  return "⚙️ <b>Settings</b>\n\nWeekly dinner plan, <b>Sunday 14:00 Europe/Amsterdam</b>: <b>" + (enabled ? "On" : "Off") + "</b>\nWhile dinners are still open it follows up hourly between 09:00 and 21:00, and stops as soon as the week is full.\n\nUse /home for the dashboard, /meals for planning, /ask for questions, and /settings here.";
 }
 
 function settingsKeyboard(enabled) {
@@ -435,11 +460,10 @@ module.exports = {
   actionText,
   askText,
   changeDayText,
-  dailyKeyboard,
-  dailyText,
   dateKeyboard,
   dayKeyboard,
   dayText,
+  decided,
   escape,
   feedbackKeyboard,
   feedbackMealKeyboard,
@@ -469,4 +493,9 @@ module.exports = {
   suggestionDetails,
   suggestionKeyboard,
   weekText,
+  weekdayLabel,
+  weeklyPlanKeyboard,
+  weeklyPlanText,
+  nudgeText,
+  openDinners,
 };

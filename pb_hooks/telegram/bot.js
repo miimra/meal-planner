@@ -104,14 +104,10 @@ function homeView(app, destination) {
   };
 }
 
-function dailyView(app) {
-  const today = planning.today();
-  const todayValue = planning.dayValue(app, today);
-  const tomorrowValue = planning.dayValue(app, calendar.addDays(today, 1));
-  return {
-    text: views.dailyText(todayValue, tomorrowValue),
-    keyboard: views.dailyKeyboard(today, tomorrowValue, calendar.MEALS.some((meal) => todayValue.meals[meal].dish)),
-  };
+// The week the Sunday message plans, and the same view the menu reopens later.
+function weeklyPlanView(app, weekStart, heading) {
+  const week = planning.weekValue(app, weekStart);
+  return { week, text: views.weeklyPlanText(week, heading), keyboard: views.weeklyPlanKeyboard(week) };
 }
 
 function sendHome(app, destination, replyToMessageId) {
@@ -119,9 +115,14 @@ function sendHome(app, destination, replyToMessageId) {
   return sendPanel(destination, view.text, view.keyboard, replyToMessageId);
 }
 
-function sendDaily(app, destination) {
-  const view = dailyView(app);
+function sendWeeklyPlan(app, destination, weekStart) {
+  const view = weeklyPlanView(app, weekStart, "Dinners for the week");
   return sendPanel(destination, view.text, view.keyboard);
+}
+
+function sendNudge(app, destination, weekStart) {
+  const view = weeklyPlanView(app, weekStart, "Dinners for the week");
+  return sendPanel(destination, views.nudgeText(view.week), view.keyboard);
 }
 
 function editHome(app, destination, message) {
@@ -259,6 +260,10 @@ function handleNavigation(app, destination, message, parts) {
   if (parts[1] === "settings") return editPanel(destination, message, views.settingsText(destination.getBool("daily_enabled")), views.settingsKeyboard(destination.getBool("daily_enabled")));
   if (parts[1] === "change") return editPanel(destination, message, "✏️ <b>Choose a date</b>", views.dateKeyboard(today));
   if (parts[1] === "day" && parts[2]) return editPanel(destination, message, views.dayText(planning.dayValue(app, parts[2]), parts[2] === today ? "Today" : parts[2] === tomorrow ? "Tomorrow" : "Meal plan"), views.dayKeyboard(parts[2]));
+  if (parts[1] === "planweek") {
+    const view = weeklyPlanView(app, calendar.planningWeekStart(today), "Dinners for the week");
+    return editPanel(destination, message, view.text, view.keyboard);
+  }
   if (parts[1] === "week") return editPanel(destination, message, views.weekText(planning.weekValue(app, today)), { inline_keyboard: [[{ text: "‹ Meals", callback_data: "nav:meals" }, { text: "🏠 Home", callback_data: "nav:home" }]] });
   if (parts[1] === "saved") {
     const dishes = app.findRecordsByFilter("dishes", "lifecycle = 'want_to_try'", "name", 0, 0);
@@ -596,7 +601,8 @@ module.exports = {
   registerCommands,
   editHome,
   editPanel,
-  sendDaily,
+  sendNudge,
+  sendWeeklyPlan,
   sendHome,
   sendPanel,
   showSuggestion,

@@ -14,12 +14,12 @@ const categories: Category[] = [{
   effort_minutes: [25, 45],
 }];
 
-test("buildDay always includes breakfast, lunch, and dinner", () => {
+test("buildDay covers dinner only, and fills its rotation category", () => {
   const day = buildDay("2026-08-12", categories, [], []);
-  assert.deepEqual(Object.keys(day.meals), ["breakfast", "lunch", "dinner"]);
-  assert.equal(day.meals.breakfast.category, null);
-  assert.deepEqual(day.meals.breakfast.categoryOptions, []);
-  assert.equal(day.meals.breakfast.dish, null);
+  assert.deepEqual(Object.keys(day.meals), ["dinner"]);
+  assert.equal(day.meals.dinner.category?.catId, 6);
+  assert.equal(day.meals.dinner.dish, null);
+  assert.equal(day.meals.dinner.status, "unplanned");
 });
 
 test("buildDay exposes both Sunday dinner category choices", () => {
@@ -40,12 +40,13 @@ test("buildDay exposes exact assignments and special statuses", () => {
     [{ id: "salmon", name: "Lemon salmon" }],
     [
       { id: "a", date: "2026-08-12", meal: "dinner", category: "fish-record", dish: "salmon", status: "planned", selection_source: "ai" },
+      // A leftover row from the three-meal era must be ignored, not rendered.
       { id: "b", date: "2026-08-12", meal: "lunch", status: "buy_food" },
     ],
   );
   assert.equal(day.meals.dinner.dish?.name, "Lemon salmon");
   assert.equal(day.meals.dinner.category?.name_en, "Fish & Shrimp");
-  assert.equal(day.meals.lunch.status, "buy_food");
+  assert.deepEqual(Object.keys(day.meals), ["dinner"]);
 });
 
 test("Amsterdam date and Monday calculations are calendar-safe", () => {

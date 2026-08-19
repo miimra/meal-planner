@@ -2,8 +2,11 @@ import type { Category } from "./categories.ts";
 import { findCategory } from "./categories.ts";
 import { planForDate } from "./rotation.ts";
 
-export const MEALS = ["breakfast", "lunch", "dinner"] as const;
-export type MealType = (typeof MEALS)[number];
+// Dinner is the only meal the plan covers. Older breakfast and lunch rows stay
+// in PocketBase, so the stored type stays wider than what we render.
+export const MEALS = ["dinner"] as const;
+export type PlannedMeal = (typeof MEALS)[number];
+export type MealType = "breakfast" | "lunch" | "dinner";
 export type MealStatus =
   | "unplanned"
   | "planned"
@@ -39,7 +42,7 @@ export interface MealSlot {
 
 export interface PlanDay {
   date: string;
-  meals: Record<MealType, MealSlot>;
+  meals: Record<PlannedMeal, MealSlot>;
 }
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -128,7 +131,7 @@ export function buildDay(
   const categoryByRecordId = new Map(categories.map((item) => [item.pbId, item]));
   const dishById = new Map(dishes.map((item) => [item.id, item]));
   const rotation = planForDate(dateFromKey(date));
-  const meals = {} as Record<MealType, MealSlot>;
+  const meals = {} as Record<PlannedMeal, MealSlot>;
 
   for (const meal of MEALS) {
     const assignment = assignmentMap.get(meal);

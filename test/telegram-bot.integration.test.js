@@ -371,15 +371,19 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
 
   const today = amsterdamDate();
   const tomorrow = addDays(today, 1);
+  // Monday, Tuesday and Wednesday always resolve to a single dinner category,
+  // so these flows never hit the Sunday choice gate whatever day the suite runs.
+  const planDay = nextWeekday(addDays(today, 1), 1);
+  const secondPlanDay = addDays(planDay, 1);
   await t.test("today, tomorrow, and burger-date answers are grounded in deterministic stored facts", async () => {
     const chosenDish = (await list("dishes"))[0];
-    await create("meal_assignments", { date: today, meal: "breakfast", dish: chosenDish.id, status: "planned", selection_source: "telegram" });
+    await create("meal_assignments", { date: today, meal: "dinner", dish: chosenDish.id, status: "planned", selection_source: "telegram" });
     await webhook({ update_id: nextUpdate(), message: { message_id: 80, from: { id: 111 }, chat: privateChat, text: "What is today's food?" } });
     assert.match(mock.assistantRequests.at(-1).deterministicDraft, new RegExp("Today \\(.*" + today));
     assert.match(mock.assistantRequests.at(-1).deterministicDraft, new RegExp(chosenDish.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     await webhook({ update_id: nextUpdate(), message: { message_id: 8, from: { id: 111 }, chat: privateChat, text: "What is tomorrow's meal plan?" } });
     assert.match(mock.assistantRequests.at(-1).deterministicDraft, new RegExp("Tomorrow \\(.*" + tomorrow));
-    assert.match(mock.assistantRequests.at(-1).deterministicDraft, /breakfast.*lunch.*dinner/i);
+    assert.match(mock.assistantRequests.at(-1).deterministicDraft, /dinner/i);
     await webhook({ update_id: nextUpdate(), message: { message_id: 9, from: { id: 111 }, chat: privateChat, text: "When is the next burger-compatible date?" } });
     assert.match(mock.assistantRequests.at(-1).deterministicDraft, /burger/i);
     assert.equal(mock.assistantRequests.at(-1).household.timezone, "Europe/Amsterdam");
@@ -467,7 +471,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.match(edit.body.text, /Which meal do you want to change/);
     assert.match(edit.body.text, new RegExp((await list("dishes"))[0].name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "change-breakfast", from: { id: 111 }, data: `pick:meal:${today}:breakfast`, message: { message_id: 704, chat: groupChat } } });
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "change-dinner", from: { id: 111 }, data: `pick:meal:${today}:dinner`, message: { message_id: 704, chat: groupChat } } });
     edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
     assert.match(edit.body.text, /Current: <b>.+<\/b>/);
     assert.match(JSON.stringify(edit.body.reply_markup), /Leftovers/);
@@ -499,7 +503,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
   await t.test("suggestion opens as rich embedded media using a looked-up photo it then caches", async () => {
     const photosBefore = mock.photoRequests.length;
     const suggestionUpdateId = nextUpdate();
-    await webhook({ update_id: suggestionUpdateId, callback_query: { id: "suggest", from: { id: 111 }, data: `do:suggest:${tomorrow}:lunch`, message: { message_id: 101, chat: groupChat } } });
+    await webhook({ update_id: suggestionUpdateId, callback_query: { id: "suggest", from: { id: 111 }, data: `do:suggest:${planDay}:dinner`, message: { message_id: 101, chat: groupChat } } });
     assert.equal(mock.photoRequests.length, photosBefore + 1, "a Wikipedia hit must not fall through to Openverse");
     assert.match(mock.photoRequests.at(-1), /\/wikipedia\/w\/api\.php\?/);
     const upload = mock.telegram.filter((call) => call.method === "editMessageText" && call.body && call.body.rich_message).at(-1);
@@ -507,7 +511,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.equal(upload.multipart, undefined, "a photo URL needs no multipart upload");
     assert.equal(upload.body.message_id, 101);
     assert.equal(upload.body.rich_message.media[0].media.media, "https://upload.wikimedia.org/wikipedia/commons/thumb/a/b/Dish.jpg/1000px-Dish.jpg");
-    firstSuggestion = (await list("meal_suggestions")).find((item) => item.date === tomorrow && item.meal === "lunch" && item.outcome === "pending");
+    firstSuggestion = (await list("meal_suggestions")).find((item) => item.date === planDay && item.meal === "dinner" && item.outcome === "pending");
     assert.ok(firstSuggestion.telegram_image_file_id);
 
     const sendsBeforeDetails = mock.telegram.filter((call) => call.method === "sendMessage").length;
@@ -529,7 +533,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     const firstPhotoCount = mock.photoRequests.length;
     const sendsBeforeAccept = mock.telegram.filter((call) => call.method === "sendMessage").length;
     await webhook({ update_id: nextUpdate(), callback_query: { id: "use-one", from: { id: 111 }, data: `sg:use:${firstSuggestion.id}`, message: { message_id: 101, chat: groupChat, rich_message: {} } } });
-    let assignment = (await list("meal_assignments")).find((item) => item.date === tomorrow && item.meal === "lunch");
+    let assignment = (await list("meal_assignments")).find((item) => item.date === planDay && item.meal === "dinner");
     const firstDish = assignment.dish;
     assert.ok(firstDish);
     assert.equal(mock.photoRequests.length, firstPhotoCount, "accepting a cached card must not look its photo up again");
@@ -538,19 +542,19 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.equal(acceptedEdit.body.rich_message, undefined, "accepting must remove the suggestion image");
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBeforeAccept);
 
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "suggest-two", from: { id: 111 }, data: `do:suggest:${tomorrow}:lunch`, message: { message_id: 702, chat: groupChat } } });
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "suggest-two", from: { id: 111 }, data: `do:suggest:${planDay}:dinner`, message: { message_id: 702, chat: groupChat } } });
     const repeatPayload = JSON.parse(mock.mealRequests.at(-1).messages.find((message) => message.role === "user").content);
-    assert.ok(repeatPayload.doNotSuggest.lunch.includes(firstSuggestion.suggested_name), "the previous suggestion must be listed as off limits");
+    assert.ok(repeatPayload.doNotSuggest.dinner.includes(firstSuggestion.suggested_name), "the previous suggestion must be listed as off limits");
     assert.equal(repeatPayload.dishes, undefined, "the whole dish library must not be shipped to the model");
     assert.equal(repeatPayload.feedback, undefined);
     assert.equal(repeatPayload.week, undefined);
-    secondSuggestion = (await list("meal_suggestions")).find((item) => item.date === tomorrow && item.meal === "lunch" && item.outcome === "pending");
+    secondSuggestion = (await list("meal_suggestions")).find((item) => item.date === planDay && item.meal === "dinner" && item.outcome === "pending");
     assert.notEqual(secondSuggestion.id, firstSuggestion.id);
     const mediaEdit = mock.telegram.filter((call) => call.method === "editMessageText" && call.body && call.body.rich_message).at(-1);
     assert.ok(mediaEdit);
     assert.equal(mediaEdit.body.message_id, 702);
     await webhook({ update_id: nextUpdate(), callback_query: { id: "use-two", from: { id: 111 }, data: `sg:use:${secondSuggestion.id}`, message: { message_id: 702, chat: groupChat, rich_message: {} } } });
-    assignment = (await list("meal_assignments")).find((item) => item.date === tomorrow && item.meal === "lunch");
+    assignment = (await list("meal_assignments")).find((item) => item.date === planDay && item.meal === "dinner");
     assert.notEqual(assignment.dish, firstDish);
     assert.match((await list("dishes")).find((item) => item.id === assignment.dish).name, /suggestion 2/);
   });
@@ -564,15 +568,15 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.equal(staleAnswer.body.show_alert, true);
     assert.match(staleAnswer.body.text, /no longer active/);
 
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "suggest-three", from: { id: 111 }, data: `do:suggest:${tomorrow}:lunch`, message: { message_id: 702, chat: groupChat } } });
-    const pending = (await list("meal_suggestions")).find((item) => item.date === tomorrow && item.meal === "lunch" && item.outcome === "pending");
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "suggest-three", from: { id: 111 }, data: `do:suggest:${planDay}:dinner`, message: { message_id: 702, chat: groupChat } } });
+    const pending = (await list("meal_suggestions")).find((item) => item.date === planDay && item.meal === "dinner" && item.outcome === "pending");
     await webhook({ update_id: nextUpdate(), callback_query: { id: "another", from: { id: 111 }, data: `sg:next:${pending.id}`, message: { message_id: 702, chat: groupChat, rich_message: {} } } });
     assert.ok(mock.telegram.filter((call) => call.method === "editMessageText" && (call.multipart || call.body && call.body.rich_message)).length >= 3);
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBeforeAnother);
 
     mock.failNextPhoto();
     const callsBefore = mock.telegram.length;
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "fallback", from: { id: 111 }, data: `do:suggest:${tomorrow}:breakfast`, message: { message_id: 101, chat: groupChat } } });
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "fallback", from: { id: 111 }, data: `do:suggest:${secondPlanDay}:dinner`, message: { message_id: 101, chat: groupChat } } });
     const fallbackCalls = mock.telegram.slice(callsBefore).filter((call) => call.method === "sendMessage" || call.method === "editMessageText");
     assert.ok(fallbackCalls.some((call) => /Suggestion details/.test(call.body.text) && /Use this/.test(JSON.stringify(call.body.reply_markup))));
   });
@@ -580,10 +584,10 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
   await t.test("a known dish can be typed in without asking the AI for a suggestion", async () => {
     const sendsBefore = mock.telegram.filter((call) => call.method === "sendMessage").length;
     const mealRequestsBefore = mock.mealRequests.length;
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "own", from: { id: 111 }, data: `do:own:${tomorrow}:breakfast`, message: { message_id: 720, chat: groupChat } } });
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "own", from: { id: 111 }, data: `do:own:${secondPlanDay}:dinner`, message: { message_id: 720, chat: groupChat } } });
     const prompt = mock.telegram.filter((call) => call.method === "sendMessage").at(-1);
     assert.equal(prompt.body.reply_markup.force_reply, true);
-    assert.match(prompt.body.text, new RegExp("What are you cooking for " + tomorrow + " · Breakfast\\?"));
+    assert.match(prompt.body.text, new RegExp("What are you cooking for " + secondPlanDay + " · Dinner\\?"));
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBefore + 1);
 
     await webhook({ update_id: nextUpdate(), message: {
@@ -594,7 +598,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
       reply_to_message: { message_id: prompt.result.message_id, from: { id: 5, is_bot: true, username: "moghassemi_family_assistant_bot" }, text: prompt.body.text },
     } });
     assert.equal(mock.mealRequests.length, mealRequestsBefore, "typing a known dish must not call the model");
-    const assignment = (await list("meal_assignments")).find((item) => item.date === tomorrow && item.meal === "breakfast");
+    const assignment = (await list("meal_assignments")).find((item) => item.date === secondPlanDay && item.meal === "dinner");
     assert.equal(assignment.status, "planned");
     assert.equal(assignment.selection_source, "telegram");
     const dish = (await list("dishes")).find((item) => item.id === assignment.dish);
@@ -628,18 +632,21 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
   });
 
   await t.test("Leftovers stores only a neutral state and never guesses a dish", async () => {
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "leftovers", from: { id: 111 }, data: `do:leftovers:${tomorrow}:lunch`, message: { message_id: 707, chat: groupChat } } });
-    const assignment = (await list("meal_assignments")).find((item) => item.date === tomorrow && item.meal === "lunch");
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "leftovers", from: { id: 111 }, data: `do:leftovers:${tomorrow}:dinner`, message: { message_id: 707, chat: groupChat } } });
+    const assignment = (await list("meal_assignments")).find((item) => item.date === tomorrow && item.meal === "dinner");
     assert.equal(assignment.status, "leftovers");
     assert.equal(assignment.dish, "");
     const edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
-    assert.match(edit.body.text, /Lunch<\/b> — <i>Left over<\/i>/);
+    assert.match(edit.body.text, /Dinner<\/b> — <i>Left over<\/i>/);
   });
 
   let occurrence;
   await t.test("button feedback and the next user photo retain existing behavior", async () => {
     const dish = (await list("dishes"))[0];
-    const assignment = await create("meal_assignments", { date: today, meal: "dinner", dish: dish.id, status: "planned", selection_source: "telegram" });
+    // Today's dinner was already seeded by the assistant test, and one
+    // assignment per date and meal is all the schema allows.
+    const assignment = (await list("meal_assignments")).find((item) => item.date === today && item.meal === "dinner")
+      || await create("meal_assignments", { date: today, meal: "dinner", dish: dish.id, status: "planned", selection_source: "telegram" });
     const sendsBeforeFeedbackButton = mock.telegram.filter((call) => call.method === "sendMessage").length;
     await webhook({ update_id: nextUpdate(), callback_query: { id: "feedback", from: { id: 111 }, data: `fa:liked:${assignment.id}`, message: { message_id: 703, chat: groupChat } } });
     occurrence = (await list("cooked_occurrences")).find((item) => item.date === today && item.meal === "dinner");

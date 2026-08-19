@@ -119,8 +119,13 @@ test("recipe link import migration is private, complete, and reversible", { time
   const assignments = migrated.find((collection) => collection.name === "meal_assignments");
   assert.ok(fieldMap(assignments).get("status").values.includes("leftovers"));
 
+  // Roll back everything applied after the recipe-import migration, so adding a
+  // later migration does not silently change what this test reverts.
+  const migrationFiles = fs.readdirSync(path.join(ROOT, "pb_migrations")).filter((name) => name.endsWith(".js")).sort();
+  const depth = migrationFiles.length - migrationFiles.indexOf("1786886400_recipe_link_imports.js");
+
   runPocketBase(pocketbase, [
-    "migrate", "down", "2",
+    "migrate", "down", String(depth),
     "--dir", dataDir,
     "--migrationsDir", path.join(ROOT, "pb_migrations"),
     "--hooksDir", hooksDir,

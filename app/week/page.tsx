@@ -213,12 +213,10 @@ function WeekMeal({ date, slot, now }: { date: string; slot: MealSlot; now: Date
         <p className="truncate text-[0.6875rem] text-ink-faint">
           {category ? (
             <>
-              {meta.label} · {category.name_en} <span className="fa">· {category.name_fa}</span>
+              {category.name_en} <span className="fa">· {category.name_fa}</span>
             </>
           ) : slot.categoryOptions.length > 1 ? (
-            <>
-              {meta.label} · {slot.categoryOptions.map((option) => option.name_en).join(" or ")}
-            </>
+            slot.categoryOptions.map((option) => option.name_en).join(" or ")
           ) : (
             meta.label
           )}
