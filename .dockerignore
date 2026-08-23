@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.claude
+Dockerfile
+*.md
+deploy.sh
+scripts
+test
+**/*.test.js
+**/*.test.ts
+pb_data
+out
+.env*
+backups
+**/*.env
+pocketbase
