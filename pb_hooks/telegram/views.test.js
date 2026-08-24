@@ -73,12 +73,13 @@ test("the weekly plan lists every dinner and offers only the open days", () => {
 
   const keyboard = views.weeklyPlanKeyboard(value);
   const buttons = JSON.stringify(keyboard);
-  assert.match(buttons, /"pick:meal:2026-08-18:dinner"/);
-  assert.match(buttons, /"pick:meal:2026-08-23:dinner"/);
+  // ":w" marks the weekly plan as the screen to come back to.
+  assert.match(buttons, /"pick:meal:2026-08-18:dinner:w"/);
+  assert.match(buttons, /"pick:meal:2026-08-23:dinner:w"/);
   // Days that are already settled never come back as a button.
-  assert.doesNotMatch(buttons, /"pick:meal:2026-08-17:dinner"/);
-  assert.doesNotMatch(buttons, /"pick:meal:2026-08-19:dinner"/);
-  assert.doesNotMatch(buttons, /"pick:meal:2026-08-21:dinner"/);
+  assert.doesNotMatch(buttons, /pick:meal:2026-08-17:dinner/);
+  assert.doesNotMatch(buttons, /pick:meal:2026-08-19:dinner/);
+  assert.doesNotMatch(buttons, /pick:meal:2026-08-21:dinner/);
 });
 
 test("a fully planned week says so and asks for nothing", () => {
@@ -113,7 +114,47 @@ test("the nudge names the open days and nothing else", () => {
 });
 
 test("the menu offers a way back into the weekly plan", () => {
-  assert.match(JSON.stringify(views.mealsKeyboard("2026-08-19", "2026-08-20")), /"nav:planweek"/);
+  assert.match(JSON.stringify(views.mealsKeyboard("2026-08-19", "2026-08-20")), /"nav:planweek:m"/);
+});
+
+test("back always returns to the screen the panel was opened from", () => {
+  const dinner = slot("dinner", { categoryOptions: [{ catId: 6, emoji: "🐟", name: "Fish & Shrimp" }], category: { catId: 6, emoji: "🐟", name: "Fish & Shrimp" } });
+  function back(keyboard) {
+    return keyboard.inline_keyboard.at(-1)[0];
+  }
+  // Opened from the Sunday plan message, from home, and from a day view.
+  assert.equal(back(views.actionKeyboard("2026-08-19", "dinner", dinner, "w")).callback_data, "nav:planweek");
+  assert.equal(back(views.actionKeyboard("2026-08-19", "dinner", dinner, "h")).callback_data, "nav:home");
+  assert.equal(back(views.actionKeyboard("2026-08-19", "dinner", dinner, "d")).callback_data, "nav:day:2026-08-19");
+  // Buttons from before this change carry no origin and fall back to the day.
+  assert.equal(back(views.actionKeyboard("2026-08-19", "dinner", dinner, "")).callback_data, "nav:day:2026-08-19");
+  // Junk in the callback never becomes a screen.
+  assert.equal(back(views.actionKeyboard("2026-08-19", "dinner", dinner, "zz")).callback_data, "nav:day:2026-08-19");
+  assert.equal(views.originTarget("w"), "nav:planweek");
+  assert.equal(views.originTarget("", ""), "nav:meals");
+  assert.equal(back(views.weekKeyboard("h")).callback_data, "nav:home");
+  assert.equal(back(views.weekKeyboard("w")).callback_data, "nav:planweek");
+  // Every action on the panel keeps the same origin, so the plan update lands back there.
+  const data = JSON.stringify(views.actionKeyboard("2026-08-19", "dinner", dinner, "w"));
+  for (const action of ["do:suggest", "do:own", "do:leftovers", "do:buy", "do:out", "do:skip"]) {
+    assert.match(data, new RegExp(`"${action}:2026-08-19:dinner:w"`));
+  }
+});
+
+test("an ingredients reply round trip carries its own dish, date, and meal", () => {
+  const prompt = views.ingredientsPromptText("2026-08-16", "dinner", "Ghormeh sabzi · grandma's", false);
+  assert.match(prompt, /do not know this dish/);
+  assert.deepEqual(views.parseIngredientsPromptText(prompt), {
+    name: "Ghormeh sabzi · grandma's",
+    date: "2026-08-16",
+    meal: "dinner",
+  });
+  assert.match(views.ingredientsPromptText("2026-08-16", "dinner", "Lasagne", true), /could not look its ingredients up/);
+  assert.equal(views.parseIngredientsPromptText("What are you cooking for 2026-08-16 · Dinner?"), null);
+  assert.deepEqual(views.parseIngredientList("- 500 g lamb\n• 2 onions,  1 tbsp oil \n\n"), ["500 g lamb", "2 onions", "1 tbsp oil"]);
+  assert.deepEqual(views.parseIngredientList("   "), []);
+  assert.match(views.ownDishSavedText("2026-08-16", "dinner", "Lasagne", ["500 g beef"]), /🛒 <b>Ingredients<\/b>\n• 500 g beef/);
+  assert.doesNotMatch(views.ownDishSavedText("2026-08-16", "dinner", "Lasagne", []), /Ingredients/);
 });
 
 test("an own-dish reply round trip carries its own date and meal", () => {

@@ -40,6 +40,30 @@ function request(context, meals, preferences, excludedPreferences) {
   return { meals: response.validateResponse(content, meals, context.servings), model: cfg.model };
 }
 
+function ingredients(dishName, serving) {
+  const cfg = config();
+  const result = $http.send({
+    method: "POST",
+    url: cfg.baseUrl + "/chat/completions",
+    timeout: 45,
+    headers: {
+      Authorization: "Bearer " + cfg.apiKey,
+      "Content-Type": "application/json",
+      "HTTP-Referer": cfg.siteUrl,
+      "X-Title": "Household Meal Planner",
+    },
+    body: JSON.stringify({
+      model: cfg.model,
+      temperature: 0.1,
+      messages: prompt.ingredientMessages(dishName, serving),
+      response_format: { type: "json_object" },
+    }),
+  });
+  if (result.statusCode < 200 || result.statusCode >= 300) throw new Error("openrouter_request_failed");
+  const choice = result.json && result.json.choices && result.json.choices[0];
+  return response.validateIngredients(choice && choice.message ? choice.message.content : null);
+}
+
 function generate(context, meals, preferences, excludedPreferences) {
   try {
     return request(context, meals, preferences, excludedPreferences);
@@ -89,4 +113,4 @@ function answer(question, context, deterministicDraft) {
   return content.trim().slice(0, 3500);
 }
 
-module.exports = { answer, config, generate };
+module.exports = { answer, config, generate, ingredients };

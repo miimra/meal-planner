@@ -16,6 +16,23 @@ function contentJson(content) {
   }
 }
 
+function ingredientList(value, limit) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > limit) throw new Error("invalid_ai_response");
+  return value.map((ingredient) => {
+    if (typeof ingredient !== "string" || !ingredient.trim() || ingredient.trim().length > 160) {
+      throw new Error("invalid_ai_response");
+    }
+    return ingredient.trim();
+  });
+}
+
+function validateIngredients(value) {
+  const parsed = typeof value === "string" ? contentJson(value) : value;
+  if (!parsed || typeof parsed !== "object" || typeof parsed.known !== "boolean") throw new Error("invalid_ai_response");
+  if (!parsed.known) return { known: false, ingredients: [] };
+  return { known: true, ingredients: ingredientList(parsed.ingredients, 30) };
+}
+
 function validateMeal(item, expected, serving) {
   if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("invalid_ai_response");
   if (item.meal !== expected) throw new Error("invalid_ai_response");
@@ -35,15 +52,7 @@ function validateMeal(item, expected, serving) {
   if (!Number.isInteger(item.cookMinutes) || item.cookMinutes < 0 || item.cookMinutes > 1440) {
     throw new Error("invalid_ai_response");
   }
-  if (!Array.isArray(item.ingredients) || item.ingredients.length < 1 || item.ingredients.length > 15) {
-    throw new Error("invalid_ai_response");
-  }
-  const ingredients = item.ingredients.map((ingredient) => {
-    if (typeof ingredient !== "string" || !ingredient.trim() || ingredient.trim().length > 160) {
-      throw new Error("invalid_ai_response");
-    }
-    return ingredient.trim();
-  });
+  const ingredients = ingredientList(item.ingredients, 15);
   if (expected !== "dinner" && (
     item.difficulty !== "easy"
     || item.prepMinutes + item.cookMinutes > 20
@@ -82,4 +91,4 @@ function validateResponse(value, expectedMeals, servings) {
   return expectedMeals.map((meal) => validateMeal(byMeal[meal], meal, servings && servings[meal]));
 }
 
-module.exports = { contentJson, validateResponse };
+module.exports = { contentJson, validateIngredients, validateResponse };

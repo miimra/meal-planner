@@ -47,3 +47,14 @@ test("weekday adult-only lunch requires no baby serving instruction", () => {
   assert.equal(response.validateResponse({ meals: [meal] }, ["lunch"], servings)[0].babyServing, null);
   assert.throws(() => response.validateResponse({ meals: [{ ...meal, babyServing: "Not needed" }] }, ["lunch"], servings), /invalid_ai_response/);
 });
+
+test("the ingredient lookup keeps a real list and never turns an unknown dish into one", () => {
+  const known = response.validateIngredients(JSON.stringify({ known: true, ingredients: ["  500 g lamb ", "2 onions"] }));
+  assert.deepEqual(known, { known: true, ingredients: ["500 g lamb", "2 onions"] });
+  assert.deepEqual(response.validateIngredients({ known: false, ingredients: ["invented"] }), { known: false, ingredients: [] });
+  assert.throws(() => response.validateIngredients({ known: true, ingredients: [] }), /invalid_ai_response/);
+  assert.throws(() => response.validateIngredients({ known: true }), /invalid_ai_response/);
+  assert.throws(() => response.validateIngredients({ ingredients: ["500 g lamb"] }), /invalid_ai_response/);
+  assert.throws(() => response.validateIngredients({ known: true, ingredients: [{ name: "lamb" }] }), /invalid_ai_response/);
+  assert.throws(() => response.validateIngredients("not json"), /invalid_ai_response/);
+});

@@ -19,6 +19,39 @@ function escape(value) {
   return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// ── Menu state machine ──────────────────────────────────────────────────────
+// Several screens have more than one parent (home, meals, the Sunday plan
+// message), so a fixed "‹ Back" target lands somewhere unrelated. Every
+// planning callback therefore carries one letter naming the screen it was
+// opened from, and Back returns there. Buttons in older messages carry no
+// letter and fall back to that date's day view.
+const ORIGIN_SCREENS = { h: "nav:home", m: "nav:meals", c: "nav:change", w: "nav:planweek" };
+const ORIGIN_LABELS = { h: "‹ Home", m: "‹ Meals", c: "‹ Dates", w: "‹ Week plan", d: "‹ Day" };
+
+function origin(value) {
+  const code = String(value || "");
+  return code.length === 1 && "hmcwd".indexOf(code) !== -1 ? code : "";
+}
+
+function withOrigin(data, code) {
+  return origin(code) ? data + ":" + origin(code) : data;
+}
+
+function originTarget(code, date) {
+  return ORIGIN_SCREENS[origin(code)] || (date ? "nav:day:" + date : "nav:meals");
+}
+
+function backButton(code, date) {
+  return {
+    text: ORIGIN_LABELS[origin(code)] || (date ? "‹ Day" : "‹ Meals"),
+    callback_data: originTarget(code, date),
+  };
+}
+
+function homeButton() {
+  return { text: "🏠 Home", callback_data: "nav:home" };
+}
+
 function slotLine(slot) {
   const title = ICONS[slot.meal] + " <b>" + LABELS[slot.meal] + "</b>";
   const value = slot.dish
@@ -67,11 +100,11 @@ function homeText(today, tomorrow, dailyEnabled) {
 
 function homeKeyboard(today, tomorrow, canRateToday) {
   const rows = [
-    [{ text: "✏️ Plan tomorrow", callback_data: "pick:date:" + tomorrow }, { text: "🍽 Meals", callback_data: "nav:meals" }],
+    [{ text: "✏️ Plan tomorrow", callback_data: "pick:date:" + tomorrow + ":h" }, { text: "🍽 Meals", callback_data: "nav:meals" }],
   ];
-  if (canRateToday) rows.push([{ text: "⭐ Today’s feedback", callback_data: "fb:date:" + today }]);
+  if (canRateToday) rows.push([{ text: "⭐ Today’s feedback", callback_data: "fb:date:" + today + ":h" }]);
   rows.push(
-    [{ text: "💬 Ask", callback_data: "nav:ask" }, { text: "📅 This week", callback_data: "nav:week" }],
+    [{ text: "💬 Ask", callback_data: "nav:ask" }, { text: "📅 This week", callback_data: "nav:week:h" }],
     [{ text: "⚙️ Settings", callback_data: "nav:settings" }, { text: "🔄 Refresh", callback_data: "nav:home" }],
   );
   return { inline_keyboard: rows };
@@ -124,17 +157,26 @@ function weeklyPlanText(week, heading) {
   return lines.join("\n");
 }
 
-function weeklyPlanKeyboard(week) {
+function weeklyPlanKeyboard(week, code) {
   const rows = [];
   const open = openDinners(week);
   for (let index = 0; index < open.length; index += 2) {
     rows.push(open.slice(index, index + 2).map((day) => ({
       text: weekdayLabel(day.date) + " " + day.date.slice(5),
-      callback_data: "pick:meal:" + day.date + ":dinner",
+      callback_data: "pick:meal:" + day.date + ":dinner:w",
     })));
   }
-  rows.push([{ text: "📅 Full week", callback_data: "nav:week" }, { text: "🏠 Home", callback_data: "nav:home" }]);
+  const last = [{ text: "📅 Full week", callback_data: "nav:week:w" }];
+  if (origin(code)) last.push(backButton(code));
+  last.push(homeButton());
+  rows.push(last);
   return { inline_keyboard: rows };
+}
+
+// The full-week read-only screen is opened from home, from Meals, and from the
+// weekly plan message, so its only button pair follows the caller back.
+function weekKeyboard(code) {
+  return { inline_keyboard: [[backButton(code), homeButton()]] };
 }
 
 function nudgeText(week) {
@@ -150,8 +192,8 @@ function mealsText() {
 function mealsKeyboard(today, tomorrow) {
   return { inline_keyboard: [
     [{ text: "Today", callback_data: "nav:day:" + today }, { text: "Tomorrow", callback_data: "nav:day:" + tomorrow }],
-    [{ text: "🗓 Plan the week", callback_data: "nav:planweek" }],
-    [{ text: "📅 This week", callback_data: "nav:week" }, { text: "✏️ Change a meal", callback_data: "nav:change" }],
+    [{ text: "🗓 Plan the week", callback_data: "nav:planweek:m" }],
+    [{ text: "📅 This week", callback_data: "nav:week:m" }, { text: "✏️ Change a meal", callback_data: "nav:change" }],
     [{ text: "🔖 Want to try", callback_data: "nav:saved" }],
     [{ text: "🏠 Home", callback_data: "nav:home" }],
   ] };
@@ -293,7 +335,7 @@ function dateKeyboard(today) {
     const row = [];
     for (let extra = 0; extra < 2; extra += 1) {
       const date = calendar.addDays(today, offset + extra);
-      row.push({ text: (offset + extra === 0 ? "Today · " : offset + extra === 1 ? "Tomorrow · " : "") + date.slice(5), callback_data: "pick:date:" + date });
+      row.push({ text: (offset + extra === 0 ? "Today · " : offset + extra === 1 ? "Tomorrow · " : "") + date.slice(5), callback_data: "pick:date:" + date + ":c" });
     }
     rows.push(row);
   }
@@ -301,10 +343,10 @@ function dateKeyboard(today) {
   return { inline_keyboard: rows };
 }
 
-function mealKeyboard(date, prefix) {
+function mealKeyboard(date, prefix, code) {
   return { inline_keyboard: [
-    calendar.MEALS.map((meal) => ({ text: ICONS[meal] + " " + LABELS[meal], callback_data: prefix + ":" + date + ":" + meal })),
-    [{ text: "‹ Back", callback_data: prefix === "pick:meal" ? "nav:change" : "nav:home" }, { text: "🏠 Home", callback_data: "nav:home" }],
+    calendar.MEALS.map((meal) => ({ text: ICONS[meal] + " " + LABELS[meal], callback_data: withOrigin(prefix + ":" + date + ":" + meal, code) })),
+    [backButton(code, date), homeButton()],
   ] };
 }
 
@@ -312,13 +354,13 @@ function changeDayText(day, title) {
   return dayText(day, title) + "\n\n<b>Which meal do you want to change?</b>";
 }
 
-function feedbackMealKeyboard(day) {
+function feedbackMealKeyboard(day, code) {
   const buttons = calendar.MEALS.filter((meal) => day.meals[meal].dish).map((meal) => ({
     text: ICONS[meal] + " " + LABELS[meal] + " · " + String(day.meals[meal].dish.name).slice(0, 24),
-    callback_data: "fb:meal:" + day.date + ":" + meal,
+    callback_data: withOrigin("fb:meal:" + day.date + ":" + meal, code),
   }));
   const rows = buttons.map((button) => [button]);
-  rows.push([{ text: "🏠 Home", callback_data: "nav:home" }]);
+  rows.push([backButton(code, day.date), homeButton()]);
   return { inline_keyboard: rows };
 }
 
@@ -339,23 +381,32 @@ function actionText(date, meal, slot) {
   return lines.join("\n");
 }
 
-function actionKeyboard(date, meal, slot) {
+// Only dinner is planned, so the meal chooser would be a one-button detour and
+// the action panel is opened straight from the origin screen; add the chooser
+// back into the chain the moment more than one meal is planned again.
+function actionBack(date, code) {
+  if (calendar.MEALS.length > 1) return { text: "‹ Choose meal", callback_data: withOrigin("pick:date:" + date, code) };
+  return backButton(code, date);
+}
+
+function actionKeyboard(date, meal, slot, code) {
+  const slotData = date + ":" + meal;
   const rows = [];
   if (meal === "dinner" && slot.categoryOptions && slot.categoryOptions.length > 1) {
     rows.push(slot.categoryOptions.map((category) => ({
       text: (slot.category && slot.category.catId === category.catId ? "✅ " : "") + category.emoji + " " + category.name,
-      callback_data: "pick:cat:" + date + ":" + meal + ":" + category.catId,
+      callback_data: withOrigin("pick:cat:" + slotData + ":" + category.catId, code),
     })));
     if (!slot.category) {
-      rows.push([{ text: "‹ Choose meal", callback_data: "pick:date:" + date }, { text: "🏠 Home", callback_data: "nav:home" }]);
+      rows.push([actionBack(date, code), homeButton()]);
       return { inline_keyboard: rows };
     }
   }
   rows.push(
-    [{ text: "✨ Suggest", callback_data: "do:suggest:" + date + ":" + meal }, { text: "✍️ I’ll cook…", callback_data: "do:own:" + date + ":" + meal }],
-    [{ text: "🥡 Leftovers", callback_data: "do:leftovers:" + date + ":" + meal }, { text: "🛒 Buy", callback_data: "do:buy:" + date + ":" + meal }],
-    [{ text: "🍽 Eat out", callback_data: "do:out:" + date + ":" + meal }, { text: "⏭ Skip", callback_data: "do:skip:" + date + ":" + meal }],
-    [{ text: "‹ Choose meal", callback_data: "pick:date:" + date }, { text: "🏠 Home", callback_data: "nav:home" }],
+    [{ text: "✨ Suggest", callback_data: withOrigin("do:suggest:" + slotData, code) }, { text: "✍️ I’ll cook…", callback_data: withOrigin("do:own:" + slotData, code) }],
+    [{ text: "🥡 Leftovers", callback_data: withOrigin("do:leftovers:" + slotData, code) }, { text: "🛒 Buy", callback_data: withOrigin("do:buy:" + slotData, code) }],
+    [{ text: "🍽 Eat out", callback_data: withOrigin("do:out:" + slotData, code) }, { text: "⏭ Skip", callback_data: withOrigin("do:skip:" + slotData, code) }],
+    [actionBack(date, code), homeButton()],
   );
   return { inline_keyboard: rows };
 }
@@ -375,13 +426,47 @@ function parseOwnDishText(text) {
   return meal ? { date: match[1], meal } : null;
 }
 
-function ownDishSavedText(date, meal, dishName) {
-  return "✅ <b>" + escape(dishName) + "</b> is planned for " + escape(date + " · " + LABELS[meal]) + ".";
+function ingredientLines(ingredients) {
+  return (ingredients || []).map((item) => "• " + escape(String(item).slice(0, 160))).join("\n");
+}
+
+function ownDishSavedText(date, meal, dishName, ingredients) {
+  const head = "✅ <b>" + escape(dishName) + "</b> is planned for " + escape(date + " · " + LABELS[meal]) + ".";
+  if (!ingredients || !ingredients.length) return head;
+  return head + "\n\n🛒 <b>Ingredients</b>\n" + ingredientLines(ingredients);
+}
+
+// Like the own-dish prompt, this force_reply message carries everything the
+// reply needs — dish, date, and meal — so no conversation state is stored.
+const INGREDIENTS_PROMPT = /Ingredients for (.+) · (\d{4}-\d{2}-\d{2}) · (Breakfast|Lunch|Dinner)\?/;
+
+function ingredientsPromptText(date, meal, dishName, planned) {
+  const head = "🛒 Ingredients for " + escape(dishName) + " · " + date + " · " + LABELS[meal] + "?";
+  const body = planned
+    ? "It is planned, but I could not look its ingredients up just now. Reply with them, one per line, so the shopping list stays right."
+    : "I do not know this dish, so I cannot build the shopping list for it. Reply with its ingredients, one per line — or open /meals and choose something else. Nothing is planned yet.";
+  return head + "\n\n" + body;
+}
+
+function parseIngredientsPromptText(text) {
+  const match = INGREDIENTS_PROMPT.exec(String(text || ""));
+  if (!match) return null;
+  const meal = calendar.MEALS.filter((item) => LABELS[item] === match[3])[0];
+  return meal ? { name: match[1].trim(), date: match[2], meal } : null;
+}
+
+// One per line, or comma separated for people who type it all on one line.
+function parseIngredientList(text) {
+  return String(text || "")
+    .split(/[\n,;]+/)
+    .map((item) => item.replace(/^[-•*\s]+/, "").replace(/\s+/g, " ").trim().slice(0, 160))
+    .filter(Boolean)
+    .slice(0, 30);
 }
 
 function dayKeyboard(date) {
   return { inline_keyboard: [
-    [{ text: "✏️ Change", callback_data: "pick:date:" + date }, { text: "⭐ Feedback", callback_data: "fb:date:" + date }],
+    [{ text: "✏️ Change", callback_data: "pick:date:" + date + ":d" }, { text: "⭐ Feedback", callback_data: "fb:date:" + date + ":d" }],
     [{ text: "‹ Meals", callback_data: "nav:meals" }, { text: "🏠 Home", callback_data: "nav:home" }],
   ] };
 }
@@ -433,30 +518,64 @@ function suggestionDetails(suggestion, slot) {
   return lines.join("\n");
 }
 
-function suggestionKeyboard(suggestion, selected) {
+function suggestionKeyboard(suggestion, selected, code) {
   const id = suggestion.id;
   const date = suggestion.getString("date");
   const meal = suggestion.getString("meal");
   const rows = [];
   if (!selected) rows.push([
-    { text: "✅ Use this", callback_data: "sg:use:" + id },
-    { text: "🔄 Another", callback_data: "sg:next:" + id },
+    { text: "✅ Use this", callback_data: withOrigin("sg:use:" + id, code) },
+    { text: "🔄 Another", callback_data: withOrigin("sg:next:" + id, code) },
   ]);
-  rows.push([{ text: "🔎 Details", callback_data: "sg:details:" + id }, { text: "✏️ Change", callback_data: "pick:meal:" + date + ":" + meal }]);
-  rows.push([{ text: "🏠 Home", callback_data: "nav:home" }]);
+  rows.push([
+    { text: "🔎 Details", callback_data: withOrigin("sg:details:" + id, code) },
+    { text: "✏️ Change", callback_data: withOrigin("pick:meal:" + date + ":" + meal, code) },
+  ]);
+  rows.push([backButton(code, date), homeButton()]);
   return { inline_keyboard: rows };
 }
 
-function feedbackKeyboard(assignment) {
+function suggestionDetailsKeyboard(suggestion, code) {
+  const date = suggestion.getString("date");
   return { inline_keyboard: [
-    [{ text: "👍 Liked", callback_data: "fa:liked:" + assignment.id }, { text: "😐 Okay", callback_data: "fa:okay:" + assignment.id }, { text: "👎 Disliked", callback_data: "fa:disliked:" + assignment.id }],
-    [{ text: "🏠 Home", callback_data: "nav:home" }],
+    [
+      { text: "‹ Suggestion", callback_data: withOrigin("sg:card:" + suggestion.id, code) },
+      { text: "✏️ Change", callback_data: withOrigin("pick:meal:" + date + ":" + suggestion.getString("meal"), code) },
+    ],
+    [backButton(code, date), homeButton()],
   ] };
+}
+
+function feedbackKeyboard(assignment, code) {
+  const date = assignment.getString("date");
+  return { inline_keyboard: [
+    [
+      { text: "👍 Liked", callback_data: withOrigin("fa:liked:" + assignment.id, code) },
+      { text: "😐 Okay", callback_data: withOrigin("fa:okay:" + assignment.id, code) },
+      { text: "👎 Disliked", callback_data: withOrigin("fa:disliked:" + assignment.id, code) },
+    ],
+    [{ text: "‹ Choose meal", callback_data: withOrigin("fb:date:" + date, code) }, homeButton()],
+  ] };
+}
+
+function feedbackSavedKeyboard(date, code) {
+  return { inline_keyboard: [[backButton(code, date), homeButton()]] };
 }
 
 module.exports = {
   LABELS,
   actionKeyboard,
+  backButton,
+  feedbackSavedKeyboard,
+  ingredientLines,
+  ingredientsPromptText,
+  origin,
+  originTarget,
+  parseIngredientList,
+  parseIngredientsPromptText,
+  suggestionDetailsKeyboard,
+  weekKeyboard,
+  withOrigin,
   actionText,
   askText,
   changeDayText,

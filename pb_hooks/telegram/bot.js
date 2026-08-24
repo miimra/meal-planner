@@ -40,6 +40,7 @@ function friendlyError(error) {
   if (code === "invalid_dinner_category") return "That category does not belong to this dinner date.";
   if (code === "meal_not_planned") return "That meal has no planned dish to rate.";
   if (code === "dish_name_required") return "Send the dish name as plain text and I’ll plan it.";
+  if (code === "ingredients_required") return "Reply with the ingredients, one per line, so I can build the shopping list.";
   if (code === "recipe_import_category_required") return "Choose a household category before saving this recipe.";
   if (code.indexOf("recipe_import_") === 0) return "This recipe card is no longer available for that action.";
   if (code.indexOf("openrouter") === 0 || code === "invalid_ai_response") return "I couldn’t do that right now. Please try again later.";
@@ -105,9 +106,9 @@ function homeView(app, destination) {
 }
 
 // The week the Sunday message plans, and the same view the menu reopens later.
-function weeklyPlanView(app, weekStart, heading) {
+function weeklyPlanView(app, weekStart, heading, code) {
   const week = planning.weekValue(app, weekStart);
-  return { week, text: views.weeklyPlanText(week, heading), keyboard: views.weeklyPlanKeyboard(week) };
+  return { week, text: views.weeklyPlanText(week, heading), keyboard: views.weeklyPlanKeyboard(week, code) };
 }
 
 function sendHome(app, destination, replyToMessageId) {
@@ -169,10 +170,10 @@ function storeTelegramImageId(app, suggestion, result) {
   }
 }
 
-function showSuggestion(app, destination, message, suggestion, selected) {
+function showSuggestion(app, destination, message, suggestion, selected, code) {
   const slot = planning.slotValue(app, suggestion.getString("date"), suggestion.getString("meal"));
   const caption = views.suggestionCaption(suggestion, slot, selected);
-  const keyboard = views.suggestionKeyboard(suggestion, selected);
+  const keyboard = views.suggestionKeyboard(suggestion, selected, code);
   let photo = "";
   try {
     photo = suggestionPhoto(suggestion);
@@ -187,10 +188,10 @@ function showSuggestion(app, destination, message, suggestion, selected) {
   return editPanel(destination, message, caption + "\n\n" + views.suggestionDetails(suggestion, slot), keyboard);
 }
 
-function markSuggestionSelected(app, destination, message, suggestion) {
+function markSuggestionSelected(app, destination, message, suggestion, code) {
   const slot = planning.slotValue(app, suggestion.getString("date"), suggestion.getString("meal"));
   const caption = views.suggestionCaption(suggestion, slot, true);
-  const keyboard = views.suggestionKeyboard(suggestion, true);
+  const keyboard = views.suggestionKeyboard(suggestion, true, code);
   if (messageHasMedia(message)) return client.editMessageCaption(chatId(destination), message.message_id, caption, keyboard);
   return client.editMessageText(chatId(destination), message.message_id, caption + "\n\n" + views.suggestionDetails(suggestion, slot), keyboard);
 }
@@ -215,16 +216,16 @@ function assertSuggestionPending(suggestion) {
   if (suggestion.getString("outcome") !== "pending") throw new Error("suggestion_not_pending");
 }
 
-function editAction(app, destination, message, date, meal) {
+function editAction(app, destination, message, date, meal, code) {
   const slot = planning.slotValue(app, date, meal);
-  return editPanel(destination, message, views.actionText(date, meal, slot), views.actionKeyboard(date, meal, slot));
+  return editPanel(destination, message, views.actionText(date, meal, slot), views.actionKeyboard(date, meal, slot, code));
 }
 
-function showFeedback(app, destination, message, date, meal) {
+function showFeedback(app, destination, message, date, meal, code) {
   const assignment = planning.assignmentFor(app, date, meal);
   if (!assignment || !assignment.getString("dish")) throw new Error("meal_not_planned");
   const dish = app.findRecordById("dishes", assignment.getString("dish"));
-  return editPanel(destination, message, "⭐ <b>" + views.escape(date + " · " + meal) + "</b>\n\nHow was <b>" + views.escape(dish.getString("name")) + "</b>?", views.feedbackKeyboard(assignment));
+  return editPanel(destination, message, "⭐ <b>" + views.escape(date + " · " + meal) + "</b>\n\nHow was <b>" + views.escape(dish.getString("name")) + "</b>?", views.feedbackKeyboard(assignment, code));
 }
 
 function handleCommand(app, user, destination, message, parsed) {
@@ -261,10 +262,10 @@ function handleNavigation(app, destination, message, parts) {
   if (parts[1] === "change") return editPanel(destination, message, "✏️ <b>Choose a date</b>", views.dateKeyboard(today));
   if (parts[1] === "day" && parts[2]) return editPanel(destination, message, views.dayText(planning.dayValue(app, parts[2]), parts[2] === today ? "Today" : parts[2] === tomorrow ? "Tomorrow" : "Meal plan"), views.dayKeyboard(parts[2]));
   if (parts[1] === "planweek") {
-    const view = weeklyPlanView(app, calendar.planningWeekStart(today), "Dinners for the week");
+    const view = weeklyPlanView(app, calendar.planningWeekStart(today), "Dinners for the week", parts[2]);
     return editPanel(destination, message, view.text, view.keyboard);
   }
-  if (parts[1] === "week") return editPanel(destination, message, views.weekText(planning.weekValue(app, today)), { inline_keyboard: [[{ text: "‹ Meals", callback_data: "nav:meals" }, { text: "🏠 Home", callback_data: "nav:home" }]] });
+  if (parts[1] === "week") return editPanel(destination, message, views.weekText(planning.weekValue(app, today)), views.weekKeyboard(parts[2]));
   if (parts[1] === "saved") {
     const dishes = app.findRecordsByFilter("dishes", "lifecycle = 'want_to_try'", "name", 0, 0);
     return editPanel(destination, message, views.savedRecipesText(dishes), { inline_keyboard: [[{ text: "‹ Meals", callback_data: "nav:meals" }, { text: "🏠 Home", callback_data: "nav:home" }]] });
@@ -359,33 +360,38 @@ function handleCallback(app, user, destination, query) {
     }
     if (parts[0] === "pick" && parts[1] === "date" && parts[2]) {
       assertPlanningDate(parts[2]);
-      const title = parts[2] === planning.today() ? "Today" : parts[2] === calendar.addDays(planning.today(), 1) ? "Tomorrow" : "Meal plan";
-      editPanel(destination, query.message, views.changeDayText(planning.dayValue(app, parts[2]), title), views.mealKeyboard(parts[2], "pick:meal"));
+      const code = views.origin(parts[3]);
+      if (calendar.MEALS.length === 1) editAction(app, destination, query.message, parts[2], calendar.MEALS[0], code);
+      else {
+        const title = parts[2] === planning.today() ? "Today" : parts[2] === calendar.addDays(planning.today(), 1) ? "Tomorrow" : "Meal plan";
+        editPanel(destination, query.message, views.changeDayText(planning.dayValue(app, parts[2]), title), views.mealKeyboard(parts[2], "pick:meal", code));
+      }
       client.answerCallback(query.id, "", false);
       return true;
     }
-    if (parts[0] === "pick" && parts[1] === "meal" && parts.length === 4) {
+    if (parts[0] === "pick" && parts[1] === "meal" && parts.length >= 4) {
       assertPlanningDate(parts[2]);
       calendar.assertMeal(parts[3]);
-      editAction(app, destination, query.message, parts[2], parts[3]);
+      editAction(app, destination, query.message, parts[2], parts[3], views.origin(parts[4]));
       client.answerCallback(query.id, "", false);
       return true;
     }
-    if (parts[0] === "pick" && parts[1] === "cat" && parts.length === 5) {
+    if (parts[0] === "pick" && parts[1] === "cat" && parts.length >= 5) {
       assertPlanningDate(parts[2]);
       if (parts[3] !== "dinner") throw new Error("invalid_dinner_category");
       planning.selectDinnerCategory(app, parts[2], parts[4]);
-      editAction(app, destination, query.message, parts[2], parts[3]);
+      editAction(app, destination, query.message, parts[2], parts[3], views.origin(parts[5]));
       client.answerCallback(query.id, "", false);
       return true;
     }
-    if (parts[0] === "do" && parts.length === 4) {
+    if (parts[0] === "do" && parts.length >= 4) {
       assertPlanningDate(parts[2]);
+      const code = views.origin(parts[4]);
       if (parts[1] === "suggest") {
         const slot = planning.slotValue(app, parts[2], parts[3]);
         if (parts[3] === "dinner" && slot.categoryOptions.length > 1 && !slot.category) throw new Error("dinner_category_required");
         const suggestion = planning.generateSuggestions(app, parts[2], [parts[3]])[0];
-        showSuggestion(app, destination, query.message, suggestion, false);
+        showSuggestion(app, destination, query.message, suggestion, false, code);
         client.answerCallback(query.id, "Suggestion ready", false);
       } else if (parts[1] === "own") {
         calendar.assertMeal(parts[3]);
@@ -393,41 +399,39 @@ function handleCallback(app, user, destination, query) {
         client.answerCallback(query.id, "Reply with the dish name", false);
       } else {
         performAction(app, parts[1], parts[2], parts[3]);
-        editHome(app, destination, query.message);
+        handleNavigation(app, destination, query.message, views.originTarget(code, parts[2]).split(":"));
         client.answerCallback(query.id, "Plan updated", false);
       }
       return true;
     }
-    if (parts[0] === "sg" && parts.length === 3) {
+    if (parts[0] === "sg" && parts.length >= 3) {
       const suggestion = app.findRecordById("meal_suggestions", parts[2]);
+      const code = views.origin(parts[3]);
       if (parts[1] === "use") {
         assertPlanningDate(suggestion.getString("date"));
         assertSuggestionPending(suggestion);
         planning.acceptSuggestion(app, suggestion.id, user.getString("member"));
         client.answerCallback(query.id, "Meal planned", false);
-        markSuggestionSelected(app, destination, query.message, suggestion);
+        markSuggestionSelected(app, destination, query.message, suggestion, code);
         return true;
       }
       if (parts[1] === "next") {
         assertPlanningDate(suggestion.getString("date"));
         assertSuggestionPending(suggestion);
         const replacement = planning.generateSuggestions(app, suggestion.getString("date"), [suggestion.getString("meal")], suggestion.getString("request_text"))[0];
-        showSuggestion(app, destination, query.message, replacement, false);
+        showSuggestion(app, destination, query.message, replacement, false, code);
         client.answerCallback(query.id, "New suggestion ready", false);
         return true;
       }
       if (parts[1] === "details") {
         const slot = planning.slotValue(app, suggestion.getString("date"), suggestion.getString("meal"));
-        editPanel(destination, query.message, views.suggestionDetails(suggestion, slot), { inline_keyboard: [
-          [{ text: "‹ Suggestion", callback_data: "sg:card:" + suggestion.id }, { text: "✏️ Change", callback_data: "pick:meal:" + suggestion.getString("date") + ":" + suggestion.getString("meal") }],
-          [{ text: "🏠 Home", callback_data: "nav:home" }],
-        ] });
+        editPanel(destination, query.message, views.suggestionDetails(suggestion, slot), views.suggestionDetailsKeyboard(suggestion, code));
         client.answerCallback(query.id, "", false);
         return true;
       }
       if (parts[1] === "card") {
         const selected = suggestion.getString("outcome") === "accepted";
-        showSuggestion(app, destination, query.message, suggestion, selected);
+        showSuggestion(app, destination, query.message, suggestion, selected, code);
         client.answerCallback(query.id, "", false);
         return true;
       }
@@ -440,24 +444,24 @@ function handleCallback(app, user, destination, query) {
         destination,
         query.message,
         canRate ? "⭐ <b>Choose a meal to rate · " + parts[2] + "</b>" : "⭐ <b>No meals to rate · " + parts[2] + "</b>\n\nOnly meals with a chosen dish can receive feedback.",
-        views.feedbackMealKeyboard(day),
+        views.feedbackMealKeyboard(day, views.origin(parts[3])),
       );
       client.answerCallback(query.id, "", false);
       return true;
     }
-    if (parts[0] === "fb" && parts[1] === "meal" && parts.length === 4) {
-      showFeedback(app, destination, query.message, parts[2], parts[3]);
+    if (parts[0] === "fb" && parts[1] === "meal" && parts.length >= 4) {
+      showFeedback(app, destination, query.message, parts[2], parts[3], views.origin(parts[4]));
       client.answerCallback(query.id, "", false);
       return true;
     }
-    if (parts[0] === "fa" && parts.length === 3) {
+    if (parts[0] === "fa" && parts.length >= 3) {
       const assignment = app.findRecordById("meal_assignments", parts[2]);
       const occurrence = planning.ensureOccurrence(app, assignment.getString("date"), assignment.getString("meal"));
       if (!occurrence) throw new Error("meal_not_planned");
       planning.saveFeedback(app, occurrence.id, user.getString("member"), parts[1]);
       state.setConversation(app, user, destination, occurrence, query.message && query.message.message_id);
       const dish = app.findRecordById("dishes", occurrence.getString("dish"));
-      editPanel(destination, query.message, "✅ Feedback saved for <b>" + views.escape(occurrence.getString("date") + " · " + occurrence.getString("meal") + ": " + dish.getString("name")) + "</b>.\n\nSend a photo now and I’ll attach it to this meal.", { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] });
+      editPanel(destination, query.message, "✅ Feedback saved for <b>" + views.escape(occurrence.getString("date") + " · " + occurrence.getString("meal") + ": " + dish.getString("name")) + "</b>.\n\nSend a photo now and I’ll attach it to this meal.", views.feedbackSavedKeyboard(occurrence.getString("date"), views.origin(parts[3])));
       client.answerCallback(query.id, "Feedback saved", false);
       return true;
     }
@@ -500,6 +504,51 @@ function handlePhoto(app, user, destination, message) {
   return true;
 }
 
+function askForIngredients(destination, message, date, meal, name, planned) {
+  client.sendMessage(
+    chatId(destination),
+    views.ingredientsPromptText(date, meal, name, planned),
+    { force_reply: true, selective: true, input_field_placeholder: "One ingredient per line" },
+    message.message_id,
+  );
+}
+
+function confirmDish(app, destination, message, date, meal, assignment, ingredients) {
+  const dish = app.findRecordById("dishes", assignment.getString("dish"));
+  sendPanel(destination, views.ownDishSavedText(date, meal, dish.getString("name"), ingredients), views.dayKeyboard(date), message.message_id);
+}
+
+// A typed-in dish needs its full ingredient list or the shopping list is wrong.
+// Stored dishes already have one; for the rest the model is asked, and a dish it
+// does not recognise is not planned at all until the cook supplies the list.
+function planOwnDish(app, destination, message, date, meal, name) {
+  const stored = planning.dishByName(app, planning.normalizeDishName(name));
+  const known = stored ? json.arrayField(stored, "ingredients") : [];
+  if (known.length) {
+    confirmDish(app, destination, message, date, meal, planning.setManualDish(app, date, meal, name), known);
+    return "planned own dish for " + date + " " + meal;
+  }
+  let lookup = null;
+  try {
+    lookup = planning.lookupIngredients(date, meal, name);
+  } catch (error) {
+    app.logger().warn("Ingredient lookup failed", "dish", String(name).slice(0, 100), "error_code", safeCode(error));
+  }
+  if (lookup && !lookup.known) {
+    askForIngredients(destination, message, date, meal, planning.normalizeDishName(name), false);
+    return "asked for the ingredients of unknown dish for " + date + " " + meal;
+  }
+  const assignment = planning.setManualDish(app, date, meal, name, lookup ? lookup.ingredients : []);
+  if (lookup) {
+    confirmDish(app, destination, message, date, meal, assignment, lookup.ingredients);
+    return "planned own dish with ingredients for " + date + " " + meal;
+  }
+  const dish = app.findRecordById("dishes", assignment.getString("dish"));
+  sendPanel(destination, views.ownDishSavedText(date, meal, dish.getString("name")), views.dayKeyboard(date), message.message_id);
+  askForIngredients(destination, message, date, meal, dish.getString("name"), true);
+  return "planned own dish without ingredients for " + date + " " + meal;
+}
+
 function handleOwnDish(app, destination, message) {
   const replied = message && message.reply_to_message;
   if (!replied || !commands.replyTargetsBot(message)) return false;
@@ -508,15 +557,34 @@ function handleOwnDish(app, destination, message) {
   if (!target || !name || name.charAt(0) === "/") return false;
   try {
     assertPlanningDate(target.date);
-    const assignment = planning.setManualDish(app, target.date, target.meal, name);
-    const dish = app.findRecordById("dishes", assignment.getString("dish"));
-    sendPanel(destination, views.ownDishSavedText(target.date, target.meal, dish.getString("name")), views.dayKeyboard(target.date), message.message_id);
-    message._activityAction = "planned own dish for " + target.date + " " + target.meal;
+    message._activityAction = planOwnDish(app, destination, message, target.date, target.meal, name);
   } catch (error) {
     const failure = friendlyError(error);
     if (!failure) throw error;
     sendPanel(destination, failure, { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] }, message.message_id);
     message._activityAction = "rejected own dish: " + failure;
+  }
+  return true;
+}
+
+function handleIngredientsReply(app, destination, message) {
+  const replied = message && message.reply_to_message;
+  if (!replied || !commands.replyTargetsBot(message)) return false;
+  const target = views.parseIngredientsPromptText(replied.text);
+  const text = String(message.text || "").trim();
+  if (!target || !text || text.charAt(0) === "/") return false;
+  try {
+    assertPlanningDate(target.date);
+    const ingredients = views.parseIngredientList(text);
+    if (!ingredients.length) throw new Error("ingredients_required");
+    const assignment = planning.setManualDish(app, target.date, target.meal, target.name, ingredients);
+    confirmDish(app, destination, message, target.date, target.meal, assignment, ingredients);
+    message._activityAction = "stored ingredients for " + target.date + " " + target.meal;
+  } catch (error) {
+    const failure = friendlyError(error);
+    if (!failure) throw error;
+    sendPanel(destination, failure, { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] }, message.message_id);
+    message._activityAction = "rejected ingredients reply: " + failure;
   }
   return true;
 }
@@ -579,6 +647,7 @@ function handle(app, update) {
       handled = parsed
         ? handleCommand(app, user, destination, update.message, parsed)
         : (handleOwnDish(app, destination, update.message)
+          || handleIngredientsReply(app, destination, update.message)
           || handleRecipeLink(app, user, destination, update.message)
           || handleQuestion(app, destination, update.message));
     }

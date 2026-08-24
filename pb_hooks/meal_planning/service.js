@@ -333,16 +333,38 @@ function acceptSuggestion(app, suggestionId, memberId) {
   return app.findRecordById("meal_assignments", assignmentId);
 }
 
-function setManualDish(app, date, meal, dishName) {
+function normalizeDishName(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
+function dishByName(app, name) {
+  return name ? first(app, "dishes", "name = {:name}", { name }) : null;
+}
+
+// A dish the household types in has no recipe behind it, so the model supplies
+// the ingredients the shopping list needs. It answers known:false rather than
+// inventing a recipe for a name it does not recognise.
+function lookupIngredients(date, meal, dishName) {
+  const name = normalizeDishName(dishName);
+  if (!name) throw new Error("dish_name_required");
+  return openrouter.ingredients(name, calendar.servingProfile(date, calendar.assertMeal(meal)));
+}
+
+function setManualDish(app, date, meal, dishName, ingredients) {
   calendar.parseDate(date);
   calendar.assertMeal(meal);
-  const name = String(dishName || "").replace(/\s+/g, " ").trim().slice(0, 200);
+  const name = normalizeDishName(dishName);
   if (!name) throw new Error("dish_name_required");
+  const list = Array.isArray(ingredients) ? ingredients : [];
   let assignmentId = "";
   app.runInTransaction((tx) => {
     const current = assignmentFor(tx, date, meal);
     const category = effectiveCategory(tx, date, meal, current);
     const dish = ensureDish(tx, name, category);
+    if (list.length) {
+      dish.set("ingredients", list);
+      tx.save(dish);
+    }
     const assignment = current || new Record(tx.findCollectionByNameOrId("meal_assignments"));
     assignment.set("date", date);
     assignment.set("meal", meal);
@@ -439,6 +461,9 @@ function saveFeedback(app, occurrenceId, memberId, rating) {
 module.exports = {
   acceptSuggestion,
   assignmentFor,
+  dishByName,
+  lookupIngredients,
+  normalizeDishName,
   dayIsResolved,
   dayValue,
   effectiveCategory,

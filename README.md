@@ -142,6 +142,20 @@ that contains them. Planning buttons for dates that have passed are rejected,
 and accepted or replaced suggestion cards cannot be reactivated from an old
 message.
 
+Every panel's back button returns to the screen that opened it — the Sunday
+plan message, Home, the Meals hub, a day view, or the date picker — because
+each planning button carries the origin it was drawn from. Settling a dinner
+from the Sunday message redraws that weekly plan instead of the home dashboard.
+`docs/menu-state-machine.md` maps every screen and its back target.
+
+**I'll cook…** also captures what the dish is made of, so the shopping list is
+complete. A dish already stored with ingredients is planned straight away; for
+anything else the model is asked for the full ingredient list. A dish it does
+not recognise is **not** planned: the bot asks for the ingredients (one per
+line) or for a different dish, and plans it only once they arrive. If the model
+cannot be reached the dish is planned anyway and the ingredients are requested
+the same way.
+
 Breakfast, dinner, and weekend lunch are sized for two adults and one baby.
 Weekday lunch is sized for two adults because the baby is not present.
 Suggestions are vegetable-forward, non-spicy, low in added salt and sugar,

@@ -44,6 +44,7 @@ function readBody(request) {
 async function startMockServer() {
   const telegram = [];
   const mealRequests = [];
+  const ingredientRequests = [];
   const assistantRequests = [];
   const photoRequests = [];
   const recipeRequests = [];
@@ -98,6 +99,16 @@ async function startMockServer() {
           },
           confidence: 0.91,
           missingFields: [],
+        }) } }] }));
+        return;
+      }
+      if (user.dishName) {
+        ingredientRequests.push(user);
+        const known = !/unknown/i.test(user.dishName);
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
+          known,
+          ingredients: known ? ["500 g main ingredient", "1 onion", "2 tbsp olive oil"] : [],
         }) } }] }));
         return;
       }
@@ -200,6 +211,7 @@ async function startMockServer() {
     baseUrl: `http://127.0.0.1:${port}`,
     telegram,
     mealRequests,
+    ingredientRequests,
     assistantRequests,
     photoRequests,
     failNextPhoto() { failPhotos += 2; },
@@ -375,6 +387,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
   // so these flows never hit the Sunday choice gate whatever day the suite runs.
   const planDay = nextWeekday(addDays(today, 1), 1);
   const secondPlanDay = addDays(planDay, 1);
+  const thirdPlanDay = addDays(planDay, 2);
   await t.test("today, tomorrow, and burger-date answers are grounded in deterministic stored facts", async () => {
     const chosenDish = (await list("dishes"))[0];
     await create("meal_assignments", { date: today, meal: "dinner", dish: chosenDish.id, status: "planned", selection_source: "telegram" });
@@ -466,10 +479,13 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
   });
 
   await t.test("meal-change screens show current food and require an explicit Sunday category", async () => {
+    // Dinner is the only planned meal, so choosing a date opens the change
+    // panel itself instead of a chooser holding a single button.
     await webhook({ update_id: nextUpdate(), callback_query: { id: "change-today", from: { id: 111 }, data: `pick:date:${today}`, message: { message_id: 704, chat: groupChat } } });
     let edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
-    assert.match(edit.body.text, /Which meal do you want to change/);
+    assert.match(edit.body.text, new RegExp("Change " + today + " · Dinner"));
     assert.match(edit.body.text, new RegExp((await list("dishes"))[0].name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(JSON.stringify(edit.body.reply_markup), /Leftovers/);
 
     await webhook({ update_id: nextUpdate(), callback_query: { id: "change-dinner", from: { id: 111 }, data: `pick:meal:${today}:dinner`, message: { message_id: 704, chat: groupChat } } });
     edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
@@ -581,9 +597,10 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.ok(fallbackCalls.some((call) => /Suggestion details/.test(call.body.text) && /Use this/.test(JSON.stringify(call.body.reply_markup))));
   });
 
-  await t.test("a known dish can be typed in without asking the AI for a suggestion", async () => {
+  await t.test("a typed-in dish is planned with the ingredients the model supplies, without a suggestion", async () => {
     const sendsBefore = mock.telegram.filter((call) => call.method === "sendMessage").length;
     const mealRequestsBefore = mock.mealRequests.length;
+    const ingredientRequestsBefore = mock.ingredientRequests.length;
     await webhook({ update_id: nextUpdate(), callback_query: { id: "own", from: { id: 111 }, data: `do:own:${secondPlanDay}:dinner`, message: { message_id: 720, chat: groupChat } } });
     const prompt = mock.telegram.filter((call) => call.method === "sendMessage").at(-1);
     assert.equal(prompt.body.reply_markup.force_reply, true);
@@ -597,14 +614,20 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
       text: "  Nan   panir   sabzi ",
       reply_to_message: { message_id: prompt.result.message_id, from: { id: 5, is_bot: true, username: "moghassemi_family_assistant_bot" }, text: prompt.body.text },
     } });
-    assert.equal(mock.mealRequests.length, mealRequestsBefore, "typing a known dish must not call the model");
+    assert.equal(mock.mealRequests.length, mealRequestsBefore, "typing a dish must not ask for a suggestion");
+    assert.equal(mock.ingredientRequests.length, ingredientRequestsBefore + 1, "the shopping list needs the dish ingredients");
+    assert.equal(mock.ingredientRequests.at(-1).dishName, "Nan panir sabzi");
+    assert.equal(mock.ingredientRequests.at(-1).servings.includesBaby, true);
     const assignment = (await list("meal_assignments")).find((item) => item.date === secondPlanDay && item.meal === "dinner");
     assert.equal(assignment.status, "planned");
     assert.equal(assignment.selection_source, "telegram");
     const dish = (await list("dishes")).find((item) => item.id === assignment.dish);
     assert.equal(dish.name, "Nan panir sabzi", "whitespace is normalized before the dish is stored");
     assert.equal(dish.lifecycle, "regular");
-    assert.match(mock.telegram.filter((call) => call.method === "sendMessage").at(-1).body.text, /Nan panir sabzi<\/b> is planned/);
+    assert.deepEqual(dish.ingredients, ["500 g main ingredient", "1 onion", "2 tbsp olive oil"]);
+    const confirmation = mock.telegram.filter((call) => call.method === "sendMessage").at(-1);
+    assert.match(confirmation.body.text, /Nan panir sabzi<\/b> is planned/);
+    assert.match(confirmation.body.text, /500 g main ingredient/);
 
     // A reply to anything else must still be treated as an ordinary question.
     await webhook({ update_id: nextUpdate(), message: {
@@ -615,6 +638,46 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
       reply_to_message: { message_id: 700, from: { id: 5, is_bot: true, username: "moghassemi_family_assistant_bot" }, text: "🏠 Household assistant" },
     } });
     assert.equal(mock.assistantRequests.at(-1).question, "And what about lunch?");
+  });
+
+  await t.test("a dish the model does not know is not planned until the ingredients arrive", async () => {
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "own-unknown", from: { id: 111 }, data: `do:own:${thirdPlanDay}:dinner`, message: { message_id: 730, chat: groupChat } } });
+    const namePrompt = mock.telegram.filter((call) => call.method === "sendMessage").at(-1);
+    await webhook({ update_id: nextUpdate(), message: {
+      message_id: 731,
+      from: { id: 111 },
+      chat: groupChat,
+      text: "Unknown grandma casserole",
+      reply_to_message: { message_id: namePrompt.result.message_id, from: { id: 5, is_bot: true, username: "moghassemi_family_assistant_bot" }, text: namePrompt.body.text },
+    } });
+    assert.equal((await list("meal_assignments")).filter((item) => item.date === thirdPlanDay).length, 0, "an unknown dish is never planned blind");
+    const ingredientPrompt = mock.telegram.filter((call) => call.method === "sendMessage").at(-1);
+    assert.equal(ingredientPrompt.body.reply_markup.force_reply, true);
+    assert.match(ingredientPrompt.body.text, new RegExp("Ingredients for Unknown grandma casserole · " + thirdPlanDay + " · Dinner\\?"));
+
+    await webhook({ update_id: nextUpdate(), message: {
+      message_id: 732,
+      from: { id: 111 },
+      chat: groupChat,
+      text: "- 1 kg potatoes\n• 300 g cheese, 2 onions",
+      reply_to_message: { message_id: ingredientPrompt.result.message_id, from: { id: 5, is_bot: true, username: "moghassemi_family_assistant_bot" }, text: ingredientPrompt.body.text },
+    } });
+    const assignment = (await list("meal_assignments")).find((item) => item.date === thirdPlanDay && item.meal === "dinner");
+    assert.equal(assignment.status, "planned");
+    const dish = (await list("dishes")).find((item) => item.id === assignment.dish);
+    assert.equal(dish.name, "Unknown grandma casserole");
+    assert.deepEqual(dish.ingredients, ["1 kg potatoes", "300 g cheese", "2 onions"]);
+    assert.match(mock.telegram.filter((call) => call.method === "sendMessage").at(-1).body.text, /1 kg potatoes/);
+  });
+
+  await t.test("a plan update from the weekly message returns to the weekly message", async () => {
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "week-day", from: { id: 111 }, data: `pick:meal:${planDay}:dinner:w`, message: { message_id: 740, chat: groupChat } } });
+    let edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
+    const back = edit.body.reply_markup.inline_keyboard.at(-1)[0];
+    assert.equal(back.callback_data, "nav:planweek", "back from the weekly flow stays in the weekly flow");
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "week-out", from: { id: 111 }, data: `do:out:${planDay}:dinner:w`, message: { message_id: 740, chat: groupChat } } });
+    edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
+    assert.match(edit.body.text, /Dinners for the week/, "the weekly plan is redrawn instead of the home dashboard");
   });
 
   await t.test("a past date cannot be planned through the own-dish reply", async () => {
