@@ -50,7 +50,7 @@ function week(start, dinners) {
   };
 }
 
-test("the weekly plan lists every dinner and offers only the open days", () => {
+test("the weekly plan lists every dinner and lets future settled days be changed", () => {
   const value = week("2026-08-17", [
     { dish: { name: "Lemon salmon" }, status: "planned" },
     {},
@@ -76,13 +76,15 @@ test("the weekly plan lists every dinner and offers only the open days", () => {
   // ":w" marks the weekly plan as the screen to come back to.
   assert.match(buttons, /"pick:meal:2026-08-18:dinner:w"/);
   assert.match(buttons, /"pick:meal:2026-08-23:dinner:w"/);
-  // Days that are already settled never come back as a button.
-  assert.doesNotMatch(buttons, /pick:meal:2026-08-17:dinner/);
-  assert.doesNotMatch(buttons, /pick:meal:2026-08-19:dinner/);
-  assert.doesNotMatch(buttons, /pick:meal:2026-08-21:dinner/);
+  // Settled days stay tappable, so the same screen handles both planning and changes.
+  assert.match(buttons, /✅ Mon 08-17/);
+  assert.match(buttons, /pick:meal:2026-08-19:dinner/);
+  assert.match(buttons, /pick:meal:2026-08-21:dinner/);
+  // Past days are listed in the text but are no longer actionable.
+  assert.doesNotMatch(JSON.stringify(views.weeklyPlanKeyboard(value, "2026-08-20")), /pick:meal:2026-08-19:dinner/);
 });
 
-test("a fully planned week says so and asks for nothing", () => {
+test("a fully planned week says so but still lets plans be changed", () => {
   const value = week("2026-08-17", [
     { dish: { name: "A" }, status: "planned" },
     { dish: { name: "B" }, status: "planned" },
@@ -94,7 +96,7 @@ test("a fully planned week says so and asks for nothing", () => {
   ]);
   assert.equal(views.openDinners(value).length, 0);
   assert.match(views.weeklyPlanText(value, "Dinners for the week"), /Every dinner is planned/);
-  assert.doesNotMatch(JSON.stringify(views.weeklyPlanKeyboard(value)), /pick:meal/);
+  assert.match(JSON.stringify(views.weeklyPlanKeyboard(value)), /✅ Mon 08-17/);
 });
 
 test("the nudge names the open days and nothing else", () => {
@@ -113,8 +115,22 @@ test("the nudge names the open days and nothing else", () => {
   assert.doesNotMatch(text, /Lemon|Mon|Wed/);
 });
 
-test("the menu offers a way back into the weekly plan", () => {
-  assert.match(JSON.stringify(views.mealsKeyboard("2026-08-19", "2026-08-20")), /"nav:planweek:m"/);
+test("home and More expose the compact menu without question or settings detours", () => {
+  const openHome = JSON.stringify(views.homeKeyboard("2026-08-19", "2026-08-20", false, false, 3));
+  assert.match(openHome, /✨ Plan tomorrow/);
+  assert.match(openHome, /Week · 3 dinners open/);
+  assert.match(openHome, /nav:more/);
+  assert.doesNotMatch(openHome, /nav:ask|nav:settings|nav:meals/);
+
+  const changedHome = JSON.stringify(views.homeKeyboard("2026-08-19", "2026-08-20", true, true, 1));
+  assert.match(changedHome, /✏️ Change tomorrow/);
+  assert.match(changedHome, /⭐ Rate today/);
+  assert.match(changedHome, /1 dinner open/);
+
+  const more = JSON.stringify(views.moreKeyboard());
+  assert.match(more, /nav:saved/);
+  assert.match(more, /nav:change/);
+  assert.match(more, /nav:settings/);
 });
 
 test("back always returns to the screen the panel was opened from", () => {
@@ -134,11 +150,17 @@ test("back always returns to the screen the panel was opened from", () => {
   assert.equal(views.originTarget("", ""), "nav:meals");
   assert.equal(back(views.weekKeyboard("h")).callback_data, "nav:home");
   assert.equal(back(views.weekKeyboard("w")).callback_data, "nav:planweek");
-  // Every action on the panel keeps the same origin, so the plan update lands back there.
+  // Common actions stay on the first panel and carry the same origin.
   const data = JSON.stringify(views.actionKeyboard("2026-08-19", "dinner", dinner, "w"));
-  for (const action of ["do:suggest", "do:own", "do:leftovers", "do:buy", "do:out", "do:skip"]) {
+  for (const action of ["do:suggest", "do:own", "do:leftovers", "do:notcooking"]) {
     assert.match(data, new RegExp(`"${action}:2026-08-19:dinner:w"`));
   }
+  assert.doesNotMatch(data, /do:buy|do:out|do:skip/);
+  const uncommon = JSON.stringify(views.notCookingKeyboard("2026-08-19", "dinner", "w"));
+  for (const action of ["do:buy", "do:out", "do:skip"]) {
+    assert.match(uncommon, new RegExp(`"${action}:2026-08-19:dinner:w"`));
+  }
+  assert.match(uncommon, /pick:meal:2026-08-19:dinner:w/);
 });
 
 test("an ingredients reply round trip carries its own dish, date, and meal", () => {

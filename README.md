@@ -74,7 +74,7 @@ curl --fail-with-body \
 
 5. Add the bot to the family group.
 6. Open `/settings` from an authorized Telegram account in the family group
-   and enable the daily update. This makes that chat the single daily-delivery
+   and enable the weekly reminder. This makes that chat the scheduled-delivery
    destination and disables any previously subscribed private or group chat.
 
 The bot registers its supported commands with Telegram during startup, which
@@ -89,14 +89,13 @@ values are idempotent.
 
 ```text
 /home — button-driven household dashboard
-/meals — view or change meal plans
-/ask — ask a household question
-/settings — daily update and help
+/plan — plan or change this week's dinners
+/settings — weekly reminder and help
 ```
 
-`/start` remains an unlisted alias for `/home`. The former meal commands are
-not alternate workflows: their behavior is available through categorized
-inline buttons.
+`/start`, `/meals`, and `/ask` remain unlisted aliases so commands and buttons
+in older messages keep working. Questions do not need a command: send ordinary
+text in private chat, or mention/reply to the bot in a group.
 
 Authorized ordinary text is read-only. Private chats answer every non-command
 text message. Groups answer only when the username configured in
@@ -107,7 +106,7 @@ cannot alter assignments; all mutations require a button.
 
 Every user-triggered bot message is a Telegram reply to the exact incoming
 message. Button actions edit the bot message containing the button, while the
-scheduled 18:30 dashboard remains a standalone message. Authorized activity is
+scheduled Sunday reminder remains a standalone message. Authorized activity is
 logged as `Telegram received (Person from Chat): message` followed by
 `Telegram action (Person from Chat): result`; control characters are removed
 and bot credentials or internal record metadata are never added automatically
@@ -121,15 +120,17 @@ Schema.org recipe data when available, YouTube uses official metadata and
 linked recipe pages, and Instagram is best-effort. If the recipe exists only
 inside inaccessible video/audio, the bot asks for pasted ingredients,
 instructions, caption, or another public link rather than inventing details.
-Confirmed recipes appear under **Meals → Want to try** and can be suggested
+Confirmed recipes appear under **More → Saved recipes** and can be suggested
 when they fit category, household preferences, feedback, recency, time, and
 difficulty.
 
 Every new command, authorized question, or feedback photo receives a new bot
 response. Buttons edit the response message that contains them, so independent
 conversations never overwrite each other and button navigation never posts a
-new message. Use **Meals → Change a meal → date → meal** to choose
-**Suggest**, **Leftovers**, **Buy**, **Eat out**, or **Skip**. **Leftovers**
+new message. Use **Week → day** to choose **Suggest**, **Enter a dish**, or
+**Leftovers**. Less common outcomes—**Buy food**, **Eat out**, and **Skip**—are
+under **Not cooking…**. Use **More → Choose another date** for dates outside
+the current week. **Leftovers**
 stores only the neutral “Left over” state and never guesses which earlier dish
 is being reused. The change screen always shows the current choice and the
 dinner rotation category. Sunday requires choosing Grilled or Stew before a
@@ -143,7 +144,7 @@ and accepted or replaced suggestion cards cannot be reactivated from an old
 message.
 
 Every panel's back button returns to the screen that opened it — the Sunday
-plan message, Home, the Meals hub, a day view, or the date picker — because
+plan message, Home, a legacy Meals/day view, or the date picker — because
 each planning button carries the origin it was drawn from. Settling a dinner
 from the Sunday message redraws that weekly plan instead of the home dashboard.
 `docs/menu-state-machine.md` maps every screen and its back target.

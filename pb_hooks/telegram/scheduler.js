@@ -90,7 +90,7 @@ function sendNudges(app) {
   }
 
   const weekStart = announced.getString("target_date");
-  const open = views.openDinners(planning.weekValue(app, weekStart));
+  const open = views.actionableDinners(planning.weekValue(app, weekStart), planning.today());
   if (!open.length) return { skipped: "week_complete", weekStart };
 
   const chats = activeChats(app);

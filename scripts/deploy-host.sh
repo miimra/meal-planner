@@ -95,7 +95,7 @@ telegram_call() {
   }
 }
 
-commands='[{"command":"home","description":"Open the household dashboard"},{"command":"meals","description":"View or change meal plans"},{"command":"ask","description":"Ask a household question"},{"command":"settings","description":"Daily updates and help"}]'
+commands='[{"command":"home","description":"Open the household dashboard"},{"command":"plan","description":"Plan or change this week'"'"'s dinners"},{"command":"settings","description":"Weekly reminder and help"}]'
 telegram_call setMyCommands --data-urlencode "commands=$commands"
 telegram_call setWebhook \
   --data-urlencode "url=${public_base%/}/api/telegram/webhook" \

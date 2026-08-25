@@ -16,9 +16,8 @@ const json = require(`${__hooks}/shared/json.js`);
 
 const BOT_COMMANDS = [
   { command: "home", description: "Open the household dashboard" },
-  { command: "meals", description: "View or change meal plans" },
-  { command: "ask", description: "Ask a household question" },
-  { command: "settings", description: "Daily updates and help" },
+  { command: "plan", description: "Plan or change this week's dinners" },
+  { command: "settings", description: "Weekly reminder and help" },
 ];
 
 function first(app, collection, filter, params) {
@@ -34,7 +33,7 @@ function safeCode(error) {
 
 function friendlyError(error) {
   const code = safeCode(error);
-  if (code === "planning_date_passed") return "That planning button is for an earlier date. Open Meals to choose today or a future date.";
+  if (code === "planning_date_passed") return "That planning button is for an earlier date. Open /plan to choose today or a future date.";
   if (code === "suggestion_not_pending") return "That suggestion is no longer active. Open the current meal plan to make a new choice.";
   if (code === "dinner_category_required") return "Choose the dinner category first.";
   if (code === "invalid_dinner_category") return "That category does not belong to this dinner date.";
@@ -99,16 +98,25 @@ function homeView(app, destination) {
   const today = planning.today();
   const tomorrow = calendar.addDays(today, 1);
   const todayValue = planning.dayValue(app, today);
+  const tomorrowValue = planning.dayValue(app, tomorrow);
+  const week = planning.weekValue(app, calendar.planningWeekStart(today));
   return {
-    text: views.homeText(todayValue, planning.dayValue(app, tomorrow), destination.getBool("daily_enabled")),
-    keyboard: views.homeKeyboard(today, tomorrow, calendar.MEALS.some((meal) => todayValue.meals[meal].dish)),
+    text: views.homeText(todayValue, tomorrowValue, destination.getBool("daily_enabled")),
+    keyboard: views.homeKeyboard(
+      today,
+      tomorrow,
+      calendar.MEALS.some((meal) => todayValue.meals[meal].dish),
+      views.decided(tomorrowValue.meals.dinner),
+      views.actionableDinners(week, today).length,
+    ),
   };
 }
 
 // The week the Sunday message plans, and the same view the menu reopens later.
-function weeklyPlanView(app, weekStart, heading, code) {
+function weeklyPlanView(app, weekStart, heading) {
   const week = planning.weekValue(app, weekStart);
-  return { week, text: views.weeklyPlanText(week, heading), keyboard: views.weeklyPlanKeyboard(week, code) };
+  const today = planning.today();
+  return { week, text: views.weeklyPlanText(week, heading, today), keyboard: views.weeklyPlanKeyboard(week, today) };
 }
 
 function sendHome(app, destination, replyToMessageId) {
@@ -123,7 +131,7 @@ function sendWeeklyPlan(app, destination, weekStart) {
 
 function sendNudge(app, destination, weekStart) {
   const view = weeklyPlanView(app, weekStart, "Dinners for the week");
-  return sendPanel(destination, views.nudgeText(view.week), view.keyboard);
+  return sendPanel(destination, views.nudgeText(view.week, planning.today()), view.keyboard);
 }
 
 function editHome(app, destination, message) {
@@ -235,8 +243,9 @@ function handleCommand(app, user, destination, message, parsed) {
     sendHome(app, destination, message.message_id);
     return true;
   }
-  if (parsed.command === "meals") {
-    sendPanel(destination, views.mealsText(), views.mealsKeyboard(today, tomorrow), message.message_id);
+  if (parsed.command === "plan" || parsed.command === "meals") {
+    const view = weeklyPlanView(app, calendar.planningWeekStart(today), "Dinners for the week");
+    sendPanel(destination, view.text, view.keyboard, message.message_id);
     return true;
   }
   if (parsed.command === "settings") {
@@ -256,19 +265,26 @@ function handleNavigation(app, destination, message, parts) {
   const today = planning.today();
   const tomorrow = calendar.addDays(today, 1);
   if (parts[1] === "home") return editHome(app, destination, message);
-  if (parts[1] === "meals") return editPanel(destination, message, views.mealsText(), views.mealsKeyboard(today, tomorrow));
+  if (parts[1] === "meals") {
+    const view = weeklyPlanView(app, calendar.planningWeekStart(today), "Dinners for the week");
+    return editPanel(destination, message, view.text, view.keyboard);
+  }
   if (parts[1] === "ask") return editPanel(destination, message, views.askText(commands.botUsername()), { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] });
   if (parts[1] === "settings") return editPanel(destination, message, views.settingsText(destination.getBool("daily_enabled")), views.settingsKeyboard(destination.getBool("daily_enabled")));
+  if (parts[1] === "more") return editPanel(destination, message, views.moreText(), views.moreKeyboard());
   if (parts[1] === "change") return editPanel(destination, message, "✏️ <b>Choose a date</b>", views.dateKeyboard(today));
   if (parts[1] === "day" && parts[2]) return editPanel(destination, message, views.dayText(planning.dayValue(app, parts[2]), parts[2] === today ? "Today" : parts[2] === tomorrow ? "Tomorrow" : "Meal plan"), views.dayKeyboard(parts[2]));
   if (parts[1] === "planweek") {
-    const view = weeklyPlanView(app, calendar.planningWeekStart(today), "Dinners for the week", parts[2]);
+    const view = weeklyPlanView(app, calendar.planningWeekStart(today), "Dinners for the week");
     return editPanel(destination, message, view.text, view.keyboard);
   }
-  if (parts[1] === "week") return editPanel(destination, message, views.weekText(planning.weekValue(app, today)), views.weekKeyboard(parts[2]));
+  if (parts[1] === "week") {
+    const view = weeklyPlanView(app, calendar.planningWeekStart(today), "Dinners for the week");
+    return editPanel(destination, message, view.text, view.keyboard);
+  }
   if (parts[1] === "saved") {
     const dishes = app.findRecordsByFilter("dishes", "lifecycle = 'want_to_try'", "name", 0, 0);
-    return editPanel(destination, message, views.savedRecipesText(dishes), { inline_keyboard: [[{ text: "‹ Meals", callback_data: "nav:meals" }, { text: "🏠 Home", callback_data: "nav:home" }]] });
+    return editPanel(destination, message, views.savedRecipesText(dishes), { inline_keyboard: [[{ text: "‹ More", callback_data: "nav:more" }, { text: "🏠 Home", callback_data: "nav:home" }]] });
   }
   return null;
 }
@@ -355,7 +371,7 @@ function handleCallback(app, user, destination, query) {
       const enabled = parts[2] === "on";
       destination = state.subscribe(app, destination, enabled);
       editPanel(destination, query.message, views.settingsText(enabled), views.settingsKeyboard(enabled));
-      client.answerCallback(query.id, enabled ? "Daily update enabled" : "Daily update disabled", false);
+      client.answerCallback(query.id, enabled ? "Weekly reminder enabled" : "Weekly reminder disabled", false);
       return true;
     }
     if (parts[0] === "pick" && parts[1] === "date" && parts[2]) {
@@ -387,7 +403,11 @@ function handleCallback(app, user, destination, query) {
     if (parts[0] === "do" && parts.length >= 4) {
       assertPlanningDate(parts[2]);
       const code = views.origin(parts[4]);
-      if (parts[1] === "suggest") {
+      if (parts[1] === "notcooking") {
+        calendar.assertMeal(parts[3]);
+        editPanel(destination, query.message, views.notCookingText(parts[2], parts[3]), views.notCookingKeyboard(parts[2], parts[3], code));
+        client.answerCallback(query.id, "", false);
+      } else if (parts[1] === "suggest") {
         const slot = planning.slotValue(app, parts[2], parts[3]);
         if (parts[3] === "dinner" && slot.categoryOptions.length > 1 && !slot.category) throw new Error("dinner_category_required");
         const suggestion = planning.generateSuggestions(app, parts[2], [parts[3]])[0];

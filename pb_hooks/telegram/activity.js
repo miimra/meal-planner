@@ -49,11 +49,11 @@ function content(update) {
 function callbackAction(data) {
   const parts = String(data || "").split(":");
   if (parts[0] === "nav") return "opened " + clean(parts[1] || "navigation", 80);
-  if (parts[0] === "set" && parts[1] === "daily") return "turned daily dashboard " + (parts[2] === "on" ? "on" : "off");
+  if (parts[0] === "set" && parts[1] === "daily") return "turned weekly reminder " + (parts[2] === "on" ? "on" : "off");
   if (parts[0] === "pick" && parts[1] === "date") return "selected date " + clean(parts[2], 20);
   if (parts[0] === "pick" && parts[1] === "meal") return "selected " + clean(parts[2] + " " + parts[3], 80);
   if (parts[0] === "do") {
-    const labels = { suggest: "generated a suggestion for", own: "asked for their own dish for", last: "set leftovers for", leftovers: "set leftovers for", buy: "set buy food for", out: "set eat out for", skip: "skipped" };
+    const labels = { suggest: "generated a suggestion for", own: "asked for their own dish for", notcooking: "opened not-cooking choices for", last: "set leftovers for", leftovers: "set leftovers for", buy: "set buy food for", out: "set eat out for", skip: "skipped" };
     return (labels[parts[1]] || "updated") + " " + clean(parts[2] + " " + parts[3], 80);
   }
   if (parts[0] === "sg") {
@@ -78,7 +78,7 @@ function action(update, handled) {
   if (Array.isArray(message.photo) && message.photo.length) return "saved feedback photo";
   const text = String(message.text || "").trim();
   if (/^\/(?:start|home)(?:@\S+)?(?:\s|$)/i.test(text)) return "sent home dashboard";
-  if (/^\/meals(?:@\S+)?(?:\s|$)/i.test(text)) return "sent meals dashboard";
+  if (/^\/(?:plan|meals)(?:@\S+)?(?:\s|$)/i.test(text)) return "sent weekly dinner plan";
   if (/^\/settings(?:@\S+)?(?:\s|$)/i.test(text)) return "sent settings";
   if (/^\/ask(?:@\S+)?\s+\S/i.test(text)) return "answered household question";
   if (/^\/ask(?:@\S+)?(?:\s|$)/i.test(text)) return "sent ask instructions";

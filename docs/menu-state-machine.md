@@ -1,147 +1,106 @@
 # Telegram menu state machine
 
-Every panel is one Telegram message. Buttons edit the message they sit on;
-only commands, replies, and photos create new messages. A screen is therefore
-identified entirely by the `callback_data` that draws it.
+The bot deliberately exposes only three Telegram commands:
 
-## The origin letter
+```text
+/home      dashboard and next actions
+/plan      current week's dinners
+/settings  weekly reminder and help
+```
 
-Most screens have more than one parent: the action panel is opened from Home,
-from a day view, from the 14-day date picker, and from the Sunday plan message.
-A fixed "‹ Back" target is right for one of those parents and wrong for the
-rest — which is why Back used to land somewhere unrelated, most visibly from
-the Sunday notification.
+`/start`, `/meals`, and `/ask` are hidden compatibility aliases. Existing
+messages that contain the older `nav:meals`, `nav:week`, or `nav:ask`
+callbacks also remain valid. `/meals` and those older meal/week callbacks now
+open the combined weekly plan instead of a separate Meals hub or read-only
+week screen.
 
-Every planning callback now carries one letter naming the screen it was opened
-from, and Back resolves that letter:
+Every inline panel edits the Telegram message that contains it. Commands,
+typed replies, recipe links, and feedback photos create new response messages.
 
-| Letter | Origin screen | Back target |
-| --- | --- | --- |
-| `h` | Home dashboard | `nav:home` |
-| `m` | Meals hub | `nav:meals` |
-| `c` | Date picker | `nav:change` |
-| `w` | Weekly dinner plan / Sunday message | `nav:planweek` |
-| `d` | Day view | `nav:day:<date>` |
-| *(none)* | button from an older message | `nav:day:<date>` |
-
-The letter is the last segment of the callback (`pick:meal:2026-08-19:dinner:w`),
-is validated on the way in, and is passed on to every button the screen draws,
-so a whole planning chain keeps returning to where it started. Buttons sent
-before this change carry no letter and fall back to that date's day view, which
-is always related to what the button does.
-
-## Screens
+## Compact menu tree
 
 ```mermaid
 flowchart TD
-  home["🏠 Home<br/>nav:home"]
-  meals["🍽 Meals<br/>nav:meals"]
-  day["📆 Day<br/>nav:day:DATE"]
-  change["✏️ Date picker<br/>nav:change"]
-  planweek["🗓 Weekly plan / Sunday message<br/>nav:planweek"]
-  week["📅 Full week (read-only)<br/>nav:week"]
-  saved["🔖 Want to try<br/>nav:saved"]
-  ask["💬 Ask<br/>nav:ask"]
-  settings["⚙️ Settings<br/>nav:settings"]
-  action["✏️ Action panel<br/>pick:meal:DATE:MEAL"]
-  suggestion["✨ Suggestion card<br/>sg:card"]
-  details["🔎 Suggestion details<br/>sg:details"]
-  fbday["⭐ Choose a meal to rate<br/>fb:date:DATE"]
-  fbmeal["⭐ Rate the dish<br/>fb:meal:DATE:MEAL"]
-  fbsaved["✅ Feedback saved · send a photo<br/>fa:RATING:ID"]
-  ownprompt(["✍️ Dish name?<br/>force_reply"])
-  ingprompt(["🛒 Ingredients?<br/>force_reply"])
-  planned(["✅ Planned<br/>new message"])
+  home["🏠 Home<br/>/home · nav:home"]
+  tomorrow["✨ Plan tomorrow / ✏️ Change tomorrow"]
+  week["🗓 Week · N dinners open<br/>/plan · nav:planweek"]
+  feedback["⭐ Rate today<br/>only when today's dish exists"]
+  more["••• More<br/>nav:more"]
+  saved["🔖 Saved recipes"]
+  dates["📆 Choose another date"]
+  settings["🔔 Weekly reminder<br/>/settings"]
+  action["✏️ Plan one dinner"]
+  suggestion["✨ Suggestion<br/>Use · Another · Details"]
+  own(["✍️ Enter a dish<br/>force reply"])
+  leftovers["🥡 Leftovers"]
+  uncommon["••• Not cooking…"]
+  buy["🛒 Buy food"]
+  out["🍽 Eat out"]
+  skip["⏭ Skip"]
 
-  home -->|Plan tomorrow ·h| action
-  home -->|Meals| meals
-  home -->|Today's feedback ·h| fbday
-  home -->|This week ·h| week
-  home --> ask
-  home --> settings
-  meals -->|Today / Tomorrow| day
-  meals -->|Plan the week ·m| planweek
-  meals -->|This week ·m| week
-  meals -->|Change a meal| change
-  meals --> saved
-  change -->|date ·c| action
-  day -->|Change ·d| action
-  day -->|Feedback ·d| fbday
-  planweek -->|open day ·w| action
-  planweek -->|Full week ·w| week
-  action -->|Suggest| suggestion
-  action -->|I'll cook…| ownprompt
-  action -->|Leftovers / Buy / Eat out / Skip| origin{{"back to the origin screen"}}
-  suggestion -->|Details| details
-  suggestion -->|Use this| suggestion
-  suggestion -->|Another| suggestion
-  suggestion -->|Change| action
-  details -->|‹ Suggestion| suggestion
-  fbday -->|meal| fbmeal
-  fbmeal -->|👍 😐 👎| fbsaved
-  ownprompt -->|reply: dish name| planned
-  ownprompt -->|reply: unknown dish| ingprompt
-  ingprompt -->|reply: ingredients| planned
-  planned --> day
+  home --> tomorrow --> action
+  home --> week
+  home -. when available .-> feedback
+  home --> more
+  week -->|tap any present/future day| action
+  more --> saved
+  more --> dates --> action
+  more --> settings
+  action --> suggestion
+  action --> own
+  action --> leftovers
+  action --> uncommon
+  uncommon --> buy
+  uncommon --> out
+  uncommon --> skip
 ```
 
-Dashed relationships in words — every screen's "‹ Back" button:
+The week panel is both the overview and the editor. Every present or future day
+is tappable, including a day already marked with `✅`; tapping it changes that
+dinner. Past days stay visible in the summary but have no button. This removes
+the former Meals hub, separate read-only Full week screen, and Change a meal
+detour from the normal path.
 
-| Screen | Back | Home |
+Questions are not menu items. In a private chat, ordinary text is answered. In
+a group, mention the bot or reply to one of its messages. A public recipe URL
+starts recipe analysis. A photo can attach to the current feedback flow.
+
+## Planning origins and Back
+
+A planning callback may end with a one-letter origin. Every later screen keeps
+that letter, so Back returns to the panel the user actually came from:
+
+| Letter | Origin | Back target |
 | --- | --- | --- |
-| Home | — | refresh |
-| Meals | — | ✓ |
-| Day view | Meals | ✓ |
-| Date picker | Meals | ✓ |
-| Weekly plan | origin (absent in the Sunday message) | ✓ |
-| Full week | origin | ✓ |
-| Want to try | Meals | ✓ |
-| Ask / Settings | — | ✓ |
-| Action panel | origin | ✓ |
-| Suggestion card / details | origin | ✓ |
-| Choose a meal to rate | origin | ✓ |
-| Rate the dish | Choose a meal to rate | ✓ |
-| Feedback saved | origin | ✓ |
-| Recipe preview / details / categories | ‹ Recipe (the import it belongs to) | ✓ |
+| `h` | Home / tomorrow | `nav:home` |
+| `w` | Weekly plan / Sunday reminder | `nav:planweek` |
+| `c` | More → another date | `nav:change` |
+| `d` | Legacy day view | `nav:day:<date>` |
+| `m` | Legacy Meals screen | `nav:meals`, which now opens Week |
+| none | Older message | related day view |
 
-Only dinner is planned, so `pick:date:DATE` opens the action panel directly
-instead of a meal chooser holding a single button. `views.actionBack` puts the
-chooser back into the chain automatically if `calendar.MEALS` ever grows again.
+For example, `pick:meal:2026-08-19:dinner:w` opens dinner planning from the
+week screen. Suggestion, detail, and action callbacks retain `w`; after a plan
+update the combined week is redrawn.
 
-## Flows that were landing somewhere unrelated
+## Dinner action panel
 
-| Flow | Was | Now |
-| --- | --- | --- |
-| Sunday message → open day → Leftovers / Buy / Eat out / Skip | the message was replaced by the Home dashboard, losing the week being planned | the weekly plan is redrawn with that dinner settled |
-| Sunday message → Full week → Back | Meals hub | weekly plan |
-| Home → Plan tomorrow → Back | the 14-day date picker, which the user never opened | Home |
-| Day view → Change → Back | the 14-day date picker | that day |
-| Day view → Change → Skip | Home dashboard | that day |
-| Suggestion card and its details | no Back at all, only Home | origin |
-| Feedback (choose meal, rate) | no Back at all, only Home | origin, then back up the feedback chain |
-| Action panel → "‹ Choose meal" | a chooser screen with one button on it | origin |
+The first panel contains only frequent choices:
 
-Stale buttons are unchanged and still safe: dates in the past are rejected,
-suggestions that are no longer pending are rejected, and both answer with an
-alert instead of a new screen.
+```text
+✨ Suggest       ✍️ Enter a dish
+🥡 Leftovers     ••• Not cooking…
+‹ Back          🏠 Home
+```
 
-## "I'll cook…" and the shopping list
+`Not cooking…` opens `Buy food`, `Eat out`, and `Skip`, plus a Back button to
+the first action panel. Sunday still requires choosing one of its two rotation
+categories before Suggest becomes available.
 
-A dish typed in by hand has no recipe behind it, so the ingredient list the
-shopping list needs is missing. The reply now resolves that before anything is
-planned:
+Suggestion cards keep the existing flow: **Use this**, **Another**,
+**Details**, **Change**, Back, and Home. A typed dish uses a force-reply prompt;
+if its ingredients cannot be resolved, the bot asks for them before completing
+the plan.
 
-1. The dish is already stored **with ingredients** → planned, no model call.
-2. Otherwise the model is asked for the dish's full ingredient list for the
-   date's serving profile. It answers `known: false` rather than inventing a
-   recipe for a name it does not recognise.
-3. **Known** → planned, ingredients stored on the dish and echoed in the
-   confirmation.
-4. **Not known** → *nothing is planned*. A `force_reply` prompt asks for the
-   ingredients, one per line, or for another dish through `/meals`. Replying
-   plans the dish with exactly those ingredients.
-5. **Model unreachable** → the dish is planned anyway (an outage must not block
-   planning) and the same prompt asks for the ingredients.
-
-Like the dish-name prompt, the ingredients prompt carries the dish, date, and
-meal in its own text, so the round trip stores no conversation state.
+Stale buttons stay safe. Past dates and suggestions that are no longer pending
+produce a Telegram alert and cannot modify the plan.

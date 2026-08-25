@@ -24,4 +24,6 @@ test("Telegram activity distinguishes handled and ignored messages", () => {
   const update = { message: { text: "What is tomorrow?" } };
   assert.equal(activity.action(update, true), "answered household question");
   assert.equal(activity.action(update, false), "ignored; no bot action");
+  assert.equal(activity.action({ message: { text: "/plan" } }, true), "sent weekly dinner plan");
+  assert.equal(activity.callbackAction("do:notcooking:2026-08-14:dinner"), "opened not-cooking choices for 2026-08-14 dinner");
 });

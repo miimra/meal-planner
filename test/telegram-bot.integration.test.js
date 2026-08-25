@@ -306,9 +306,9 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
   });
   try { await waitForServer(baseUrl, child); } catch (error) { assert.fail(error.message + "\n" + logs); }
 
-  await t.test("startup registers exactly four visible commands", () => {
+  await t.test("startup registers exactly three visible commands", () => {
     const registration = mock.telegram.find((call) => call.method === "setMyCommands");
-    assert.deepEqual(registration.body.commands.map((item) => item.command), ["home", "meals", "ask", "settings"]);
+    assert.deepEqual(registration.body.commands.map((item) => item.command), ["home", "plan", "settings"]);
   });
 
   const authResponse = await fetch(baseUrl + "/api/collections/_superusers/auth-with-password", {
@@ -382,10 +382,11 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
 
   await t.test("each user message gets a new response while buttons edit only their originating message", async () => {
     await webhook({ update_id: nextUpdate(), message: { message_id: 2, from: { id: 111, first_name: "Alex" }, chat: groupChat, text: "/start" } });
-    await webhook({ update_id: nextUpdate(), message: { message_id: 3, from: { id: 111 }, chat: groupChat, text: "/meals" } });
+    await webhook({ update_id: nextUpdate(), message: { message_id: 3, from: { id: 111 }, chat: groupChat, text: "/plan" } });
     const sent = mock.telegram.filter((call) => call.method === "sendMessage").slice(-2);
     assert.equal(sent.length, 2);
     assert.deepEqual(sent.map((call) => call.body.reply_parameters), [{ message_id: 2 }, { message_id: 3 }]);
+    assert.match(sent[1].body.text, /Dinners for the week/);
     const sendsAfterMessages = mock.telegram.filter((call) => call.method === "sendMessage").length;
     await webhook({ update_id: nextUpdate(), callback_query: { id: "home", from: { id: 111 }, data: "nav:home", message: { message_id: 701, chat: groupChat } } });
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsAfterMessages);
@@ -496,7 +497,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     mock.setRecipeCategoryMode("valid");
   });
 
-  await t.test("settings enables the single daily destination without exposing old slash commands", async () => {
+  await t.test("settings enables the weekly reminder destination without exposing old slash commands", async () => {
     await webhook({ update_id: nextUpdate(), message: { message_id: 10, from: { id: 111 }, chat: groupChat, text: "/settings" } });
     await webhook({ update_id: nextUpdate(), callback_query: { id: "daily-on", from: { id: 111 }, data: "set:daily:on", message: { message_id: 101, chat: groupChat } } });
     assert.equal((await list("telegram_chats")).find((item) => item.chat_id === String(groupChat.id)).daily_enabled, true);
@@ -513,6 +514,15 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.match(edit.body.text, new RegExp("Change " + today + " · Dinner"));
     assert.match(edit.body.text, new RegExp((await list("dishes"))[0].name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.match(JSON.stringify(edit.body.reply_markup), /Leftovers/);
+    assert.match(JSON.stringify(edit.body.reply_markup), /Not cooking/);
+    assert.doesNotMatch(JSON.stringify(edit.body.reply_markup), /do:buy|do:out|do:skip/);
+
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "not-cooking", from: { id: 111 }, data: `do:notcooking:${today}:dinner`, message: { message_id: 704, chat: groupChat } } });
+    edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
+    assert.match(edit.body.text, /Not cooking/);
+    assert.match(JSON.stringify(edit.body.reply_markup), /do:buy/);
+    assert.match(JSON.stringify(edit.body.reply_markup), /do:out/);
+    assert.match(JSON.stringify(edit.body.reply_markup), /do:skip/);
 
     await webhook({ update_id: nextUpdate(), callback_query: { id: "change-dinner", from: { id: 111 }, data: `pick:meal:${today}:dinner`, message: { message_id: 704, chat: groupChat } } });
     edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);

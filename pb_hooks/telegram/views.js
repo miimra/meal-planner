@@ -94,19 +94,26 @@ function homeText(today, tomorrow, dailyEnabled) {
     "<b>Tomorrow · " + tomorrow.date + "</b> · " + tomorrowResolved + "/" + calendar.MEALS.length + " decided",
     calendar.MEALS.map((meal) => slotLine(tomorrow.meals[meal])).join("\n"),
     "",
-    "Sunday plan message: <b>" + (dailyEnabled ? "On" : "Off") + "</b>",
+    "Weekly reminder: <b>" + (dailyEnabled ? "On" : "Off") + "</b>",
   ].join("\n");
 }
 
-function homeKeyboard(today, tomorrow, canRateToday) {
+function homeKeyboard(today, tomorrow, canRateToday, tomorrowDecided, openDinnerCount) {
+  const count = Number(openDinnerCount || 0);
   const rows = [
-    [{ text: "✏️ Plan tomorrow", callback_data: "pick:date:" + tomorrow + ":h" }, { text: "🍽 Meals", callback_data: "nav:meals" }],
+    [{
+      text: tomorrowDecided ? "✏️ Change tomorrow" : "✨ Plan tomorrow",
+      callback_data: "pick:date:" + tomorrow + ":h",
+    }],
+    [{
+      text: "🗓 Week · " + count + " dinner" + (count === 1 ? "" : "s") + " open",
+      callback_data: "nav:planweek:h",
+    }],
   ];
-  if (canRateToday) rows.push([{ text: "⭐ Today’s feedback", callback_data: "fb:date:" + today + ":h" }]);
-  rows.push(
-    [{ text: "💬 Ask", callback_data: "nav:ask" }, { text: "📅 This week", callback_data: "nav:week:h" }],
-    [{ text: "⚙️ Settings", callback_data: "nav:settings" }, { text: "🔄 Refresh", callback_data: "nav:home" }],
-  );
+  const last = [];
+  if (canRateToday) last.push({ text: "⭐ Rate today", callback_data: "fb:date:" + today + ":h" });
+  last.push({ text: "••• More", callback_data: "nav:more" });
+  rows.push(last);
   return { inline_keyboard: rows };
 }
 
@@ -132,6 +139,11 @@ function openDinners(week) {
   return week.days.filter((day) => !decided(day.meals.dinner));
 }
 
+function actionableDinners(week, fromDate) {
+  const firstDate = String(fromDate || week.start);
+  return week.days.filter((day) => day.date >= firstDate && !decided(day.meals.dinner));
+}
+
 function dinnerCategoryLine(slot) {
   if (slot.category) return "\n      🧭 " + escape(slot.category.emoji + " " + slot.category.name);
   if (slot.categoryOptions && slot.categoryOptions.length) {
@@ -140,15 +152,17 @@ function dinnerCategoryLine(slot) {
   return "";
 }
 
-function weeklyPlanText(week, heading) {
-  const open = openDinners(week);
+function weeklyPlanText(week, heading, fromDate) {
+  const open = actionableDinners(week, fromDate);
+  const firstDate = String(fromDate || week.start);
   const lines = ["🗓 <b>" + escape(heading) + "</b>", "<i>" + week.start + " → " + week.end + "</i>", ""];
   for (const day of week.days) {
     const slot = day.meals.dinner;
     const name = slot.dish
       ? escape(slot.dish.name)
       : "<i>" + escape(STATUS[slot.status] || STATUS.unplanned) + "</i>";
-    lines.push((decided(slot) ? "✅" : "⬜") + " <b>" + weekdayLabel(day.date) + "</b> " + name + (decided(slot) ? "" : dinnerCategoryLine(slot)));
+    const marker = day.date < firstDate ? "·" : decided(slot) ? "✅" : "⬜";
+    lines.push(marker + " <b>" + weekdayLabel(day.date) + "</b> " + name + (decided(slot) || day.date < firstDate ? "" : dinnerCategoryLine(slot)));
   }
   lines.push("");
   lines.push(open.length
@@ -157,17 +171,16 @@ function weeklyPlanText(week, heading) {
   return lines.join("\n");
 }
 
-function weeklyPlanKeyboard(week, code) {
+function weeklyPlanKeyboard(week, fromDate) {
   const rows = [];
-  const open = openDinners(week);
-  for (let index = 0; index < open.length; index += 2) {
-    rows.push(open.slice(index, index + 2).map((day) => ({
-      text: weekdayLabel(day.date) + " " + day.date.slice(5),
+  const days = week.days.filter((day) => day.date >= String(fromDate || week.start));
+  for (let index = 0; index < days.length; index += 2) {
+    rows.push(days.slice(index, index + 2).map((day) => ({
+      text: (decided(day.meals.dinner) ? "✅ " : "") + weekdayLabel(day.date) + " " + day.date.slice(5),
       callback_data: "pick:meal:" + day.date + ":dinner:w",
     })));
   }
-  const last = [{ text: "📅 Full week", callback_data: "nav:week:w" }];
-  if (origin(code)) last.push(backButton(code));
+  const last = [{ text: "••• More", callback_data: "nav:more" }];
   last.push(homeButton());
   rows.push(last);
   return { inline_keyboard: rows };
@@ -179,8 +192,8 @@ function weekKeyboard(code) {
   return { inline_keyboard: [[backButton(code), homeButton()]] };
 }
 
-function nudgeText(week) {
-  const open = openDinners(week);
+function nudgeText(week, fromDate) {
+  const open = actionableDinners(week, fromDate);
   const days = open.map((day) => weekdayLabel(day.date)).join(", ");
   return "⬜ <b>" + open.length + " dinner" + (open.length === 1 ? "" : "s") + " still open</b>\n" + escape(days) + "\n\nTap a day to pick something.";
 }
@@ -195,6 +208,23 @@ function mealsKeyboard(today, tomorrow) {
     [{ text: "🗓 Plan the week", callback_data: "nav:planweek:m" }],
     [{ text: "📅 This week", callback_data: "nav:week:m" }, { text: "✏️ Change a meal", callback_data: "nav:change" }],
     [{ text: "🔖 Want to try", callback_data: "nav:saved" }],
+    [{ text: "🏠 Home", callback_data: "nav:home" }],
+  ] };
+}
+
+function moreText() {
+  return [
+    "••• <b>More</b>",
+    "",
+    "Send a recipe link to save it for later, or type a question as ordinary text.",
+  ].join("\n");
+}
+
+function moreKeyboard() {
+  return { inline_keyboard: [
+    [{ text: "🔖 Saved recipes", callback_data: "nav:saved" }],
+    [{ text: "📆 Choose another date", callback_data: "nav:change" }],
+    [{ text: "🔔 Weekly reminder", callback_data: "nav:settings" }],
     [{ text: "🏠 Home", callback_data: "nav:home" }],
   ] };
 }
@@ -339,7 +369,7 @@ function dateKeyboard(today) {
     }
     rows.push(row);
   }
-  rows.push([{ text: "‹ Meals", callback_data: "nav:meals" }, { text: "🏠 Home", callback_data: "nav:home" }]);
+  rows.push([{ text: "‹ More", callback_data: "nav:more" }, { text: "🏠 Home", callback_data: "nav:home" }]);
   return { inline_keyboard: rows };
 }
 
@@ -403,12 +433,27 @@ function actionKeyboard(date, meal, slot, code) {
     }
   }
   rows.push(
-    [{ text: "✨ Suggest", callback_data: withOrigin("do:suggest:" + slotData, code) }, { text: "✍️ I’ll cook…", callback_data: withOrigin("do:own:" + slotData, code) }],
-    [{ text: "🥡 Leftovers", callback_data: withOrigin("do:leftovers:" + slotData, code) }, { text: "🛒 Buy", callback_data: withOrigin("do:buy:" + slotData, code) }],
-    [{ text: "🍽 Eat out", callback_data: withOrigin("do:out:" + slotData, code) }, { text: "⏭ Skip", callback_data: withOrigin("do:skip:" + slotData, code) }],
+    [{ text: "✨ Suggest", callback_data: withOrigin("do:suggest:" + slotData, code) }, { text: "✍️ Enter a dish", callback_data: withOrigin("do:own:" + slotData, code) }],
+    [{ text: "🥡 Leftovers", callback_data: withOrigin("do:leftovers:" + slotData, code) }, { text: "••• Not cooking…", callback_data: withOrigin("do:notcooking:" + slotData, code) }],
     [actionBack(date, code), homeButton()],
   );
   return { inline_keyboard: rows };
+}
+
+function notCookingText(date, meal) {
+  return "🚫 <b>Not cooking · " + escape(date + " · " + LABELS[meal]) + "</b>\n\nWhat should the plan show?";
+}
+
+function notCookingKeyboard(date, meal, code) {
+  const slotData = date + ":" + meal;
+  return { inline_keyboard: [
+    [
+      { text: "🛒 Buy food", callback_data: withOrigin("do:buy:" + slotData, code) },
+      { text: "🍽 Eat out", callback_data: withOrigin("do:out:" + slotData, code) },
+    ],
+    [{ text: "⏭ Skip", callback_data: withOrigin("do:skip:" + slotData, code) }],
+    [{ text: "‹ Planning options", callback_data: withOrigin("pick:meal:" + slotData, code) }, homeButton()],
+  ] };
 }
 
 // The prompt message carries its own date and meal, so a force_reply round trip
@@ -444,7 +489,7 @@ function ingredientsPromptText(date, meal, dishName, planned) {
   const head = "🛒 Ingredients for " + escape(dishName) + " · " + date + " · " + LABELS[meal] + "?";
   const body = planned
     ? "It is planned, but I could not look its ingredients up just now. Reply with them, one per line, so the shopping list stays right."
-    : "I do not know this dish, so I cannot build the shopping list for it. Reply with its ingredients, one per line — or open /meals and choose something else. Nothing is planned yet.";
+    : "I do not know this dish, so I cannot build the shopping list for it. Reply with its ingredients, one per line — or open /plan and choose something else. Nothing is planned yet.";
   return head + "\n\n" + body;
 }
 
@@ -472,12 +517,12 @@ function dayKeyboard(date) {
 }
 
 function settingsText(enabled) {
-  return "⚙️ <b>Settings</b>\n\nWeekly dinner plan, <b>Sunday 14:00 Europe/Amsterdam</b>: <b>" + (enabled ? "On" : "Off") + "</b>\nWhile dinners are still open it follows up hourly between 09:00 and 21:00, and stops as soon as the week is full.\n\nUse /home for the dashboard, /meals for planning, /ask for questions, and /settings here.";
+  return "⚙️ <b>Settings</b>\n\nWeekly dinner reminder, <b>Sunday 14:00 Europe/Amsterdam</b>: <b>" + (enabled ? "On" : "Off") + "</b>\nWhile dinners are still open it follows up hourly between 09:00 and 21:00, and stops as soon as the week is full.\n\nUse /home for the dashboard, /plan for dinners, and /settings here. Type a question or send a recipe link directly.";
 }
 
 function settingsKeyboard(enabled) {
   return { inline_keyboard: [
-    [{ text: enabled ? "🔕 Turn daily update off" : "🔔 Turn daily update on", callback_data: "set:daily:" + (enabled ? "off" : "on") }],
+    [{ text: enabled ? "🔕 Turn weekly reminder off" : "🔔 Turn weekly reminder on", callback_data: "set:daily:" + (enabled ? "off" : "on") }],
     [{ text: "🏠 Home", callback_data: "nav:home" }],
   ] };
 }
@@ -591,6 +636,10 @@ module.exports = {
   mealKeyboard,
   mealsKeyboard,
   mealsText,
+  moreKeyboard,
+  moreText,
+  notCookingKeyboard,
+  notCookingText,
   ownDishSavedText,
   ownDishText,
   parseOwnDishText,
@@ -616,5 +665,6 @@ module.exports = {
   weeklyPlanKeyboard,
   weeklyPlanText,
   nudgeText,
+  actionableDinners,
   openDinners,
 };
