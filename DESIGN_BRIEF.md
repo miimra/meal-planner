@@ -90,8 +90,8 @@ The most important screen. Must answer "what do I cook tonight?" instantly.
 **Special day states to design:**
 - **Saturday = "Eating out"**: no plan. A relaxed, permission-giving empty-ish card
   ("No plan tonight. Relax and enjoy.").
-- **Sunday = user's choice**: present **two category options** (Iranian grilled vs. heavy
-  stew) as a friendly pick-one; after picking, it behaves like a normal category card
+- **Sunday = user's choice**: present **two category options** (Iranian grills vs. stews
+  and slow dishes) as a friendly pick-one; after picking, it behaves like a normal category card
   with a "change choice" affordance.
 
 ### 6.2 Week
@@ -114,23 +114,24 @@ The most important screen. Must answer "what do I cook tonight?" instantly.
 
 ## 7. Content you're designing around (real data)
 
-**The 12 fixed categories** (emoji · English · Persian · effort). These drive the visual
-language — the emoji is each category's identity.
+**The 12 fixed categories** (emoji · English · Persian · effort). The canonical
+taxonomy and selection rules live in [`docs/meal-categories.md`](docs/meal-categories.md).
+These drive the visual language — the emoji is each category's identity.
 
 | # | Emoji | English | Persian | Effort | Notes |
 |---|-------|---------|---------|--------|-------|
-| 1 | 🍳 | Bandari & Eggs | بندری و تخم‌مرغی | Quick (20–30m) | |
-| 2 | 🍢 | Iranian Grilled | کبابی ایرانی | Medium (30–45m) | weekend only |
-| 3 | 🍲 | Heavy Iranian Stews | خورشت‌های سنگین | Heavy (60–120m) | weekend, prep-ahead |
-| 4 | 🍚 | Layered Rice & Dami | لا پلو و دمی | Medium–Heavy (45–90m) | |
-| 5 | 🍗 | International Chicken/Meat | مرغ/گوشت بین‌المللی | Medium (30–45m) | |
-| 6 | 🐟 | Fish & Shrimp | ماهی و میگو | Medium (25–45m) | "Fish weekly at most" |
-| 7 | 🍝 | Pasta & Noodles | پاستا و نودل | Quick (20–45m) | "needs a side" |
-| 8 | 🍔 | Burgers & Sushi | همبرگر و سوشی | Medium (30–45m) | |
-| 9 | 🥟 | Pastries & Baked | خمیری و تنوری | Medium (30–45m) | |
-| 10 | 🥗 | Salad as Meal | سالاد به‌عنوان وعده | Quick (15–30m) | |
-| 11 | 🌡️ | Cold & Simple | سرد و راحت | Quick (10–30m) | |
-| 12 | 🍕 | Pizza | پیتزا | Medium (30–45m) | homemade or takeaway |
+| 1 | 🍳 | Quick Iranian | غذای سریع ایرانی | Quick (15–35m) | |
+| 2 | 🍢 | Iranian Grills | کباب‌های ایرانی | Medium (30–60m) | weekend only |
+| 3 | 🍲 | Iranian Stews & Slow Dishes | خورشت و غذای آرام‌پز ایرانی | Heavy (60–150m) | weekend, prep-ahead |
+| 4 | 🍚 | Iranian Rice & Dami | پلو و دمی ایرانی | Medium–Heavy (40–90m) | |
+| 5 | 🌍 | International Mains | غذای اصلی بین‌المللی | Medium (25–55m) | |
+| 6 | 🐟 | Seafood | ماهی و غذاهای دریایی | Medium (20–50m) | fish or shellfish is central |
+| 7 | 🍝 | Pasta & Noodles | پاستا و نودل | Quick (20–45m) | vegetables or substantial side |
+| 8 | 🍔 | Casual Favorites | غذاهای خودمانی و محبوب | Medium (20–60m) | homemade or bought |
+| 9 | 🥟 | Handheld & Oven Meals | غذای دستی و تنوری | Medium (25–60m) | |
+| 10 | 🥗 | Salads & Light Plates | سالاد و بشقاب سبک | Quick (15–35m) | complete lighter dinner |
+| 11 | 🥣 | Simple Soups & No-Cook | سوپ و غذای ساده | Quick (10–35m) | |
+| 12 | ✨ | Flexible Choice | انتخاب آزاد | Medium (10–90m) | favorites or want-to-try |
 
 **Effort levels** (design distinct but calm badges): Quick ⚡, Medium 🕒, Medium–Heavy 🕓,
 Heavy 🔥.
@@ -139,8 +140,8 @@ Heavy 🔥.
 
 | | Mon | Tue | Wed | Thu | Fri | Sat | Sun |
 |--|--|--|--|--|--|--|--|
-| **Week 1** | 🍗 Int'l Chicken/Meat | 🍳 Bandari & Eggs | 🐟 Fish & Shrimp | 🍚 Layered Rice/Dami | 🍝 Pasta & Noodles | 🍴 eat out | 🍢/🍲 pick |
-| **Week 2** | 🍕 Pizza | 🌡️ Cold & Simple | 🥗 Salad-as-Meal | 🥟 Pastry/Baked | 🍔 Burgers & Sushi | 🍴 eat out | 🍢/🍲 pick |
+| **Week 1** | 🌍 International Mains | 🍳 Quick Iranian | 🐟 Seafood | 🍚 Iranian Rice/Dami | 🍝 Pasta & Noodles | 🍴 eat out | 🍢/🍲 pick |
+| **Week 2** | ✨ Flexible Choice | 🥣 Simple Soups/No-Cook | 🥗 Salads/Light Plates | 🥟 Handheld/Oven | 🍔 Casual Favorites | 🍴 eat out | 🍢/🍲 pick |
 
 Notes for realism: Tuesday is always quick (baby is home). Iranian and international
 alternate across the week.

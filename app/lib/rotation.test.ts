@@ -7,9 +7,9 @@ const fixtureCategories: Category[] = [
   {
     pbId: "abc123",
     catId: 5,
-    name_en: "International Chicken/Meat",
-    name_fa: "مرغ/گوشت بین‌المللی",
-    emoji: "🍗",
+    name_en: "International Mains",
+    name_fa: "غذای اصلی بین‌المللی",
+    emoji: "🌍",
     style: "international",
     effort: "medium",
     effort_minutes: [30, 45],
@@ -37,9 +37,9 @@ test("planForDay offers two choices on Sunday", () => {
 test("planLabel resolves a weekday plan against known categories", () => {
   const plan = planForDay(1, 0);
   const label = planLabel(plan, fixtureCategories);
-  assert.equal(label.title, "International Chicken/Meat");
-  assert.equal(label.emoji, "🍗");
-  assert.equal(label.fa, "مرغ/گوشت بین‌المللی");
+  assert.equal(label.title, "International Mains");
+  assert.equal(label.emoji, "🌍");
+  assert.equal(label.fa, "غذای اصلی بین‌المللی");
 });
 
 test("planLabel falls back gracefully when categories haven't loaded yet", () => {

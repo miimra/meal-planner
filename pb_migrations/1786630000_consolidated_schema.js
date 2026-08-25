@@ -2936,18 +2936,18 @@ migrate((app) => {
   const dishes = app.findCollectionByNameOrId("dishes");
   if (app.findAllRecords(categories).length === 0) {
     const seed = [
-      [1, "Bandari & Eggs", "بندری و تخم‌مرغی", "🍳", "iranian", "quick", 20, 30, false, false, "", ["بندری (eggs + sausage + potatoes)", "تخم‌مرغ سوسیس", "تخم‌مرغ سیب‌زمینی", "املت", "کوکو سیب‌زمینی", "کوکو سبزی", "فلافل (frozen)"]],
-      [2, "Iranian Grilled", "کبابی ایرانی", "🍢", "iranian", "medium", 30, 45, true, false, "", ["جوجه کباب", "جوجه سیخی", "کباب ترش", "چلوکباب"]],
-      [3, "Heavy Iranian Stews", "خورشت‌های سنگین", "🍲", "iranian", "heavy", 60, 120, true, true, "", ["فسنجون", "مرغ ترش", "انواع خورش‌ها (Various stews)", "پلو ماهیچه"]],
-      [4, "Layered Rice & Dami", "لا پلو و دمی", "🍚", "iranian", "medium-heavy", 45, 90, false, false, "", ["هویج و مرغ لا پلو", "قارچ و مرغ لا پلو", "ته‌چین", "لوبیا پلو", "عدس پلو", "دمی گوجه"]],
-      [5, "International Chicken/Meat", "مرغ/گوشت بین‌المللی", "🍗", "international", "medium", 30, 45, false, false, "", ["بیف استراگانف (Beef Stroganoff)", "باتر چیکن (Butter Chicken)", "تریاکی (Teriyaki)", "مرغ سوخاری (Fried Chicken)"]],
-      [6, "Fish & Shrimp", "ماهی و میگو", "🐟", "either", "medium", 25, 45, false, false, "Fish weekly at most. Shrimp is frozen.", ["ماهی (Fish)", "میگو پاستا (Shrimp Pasta)", "میگو سوخاری (Fried Shrimp)", "حواری (Shrimp Rice / Meygo Polo)"]],
-      [7, "Pasta & Noodles", "پاستا و نودل", "🍝", "international", "quick", 20, 45, false, false, "Pasta needs a side (salad, boiled egg, or veggies) — don't serve carbs alone.", ["ماکارونی", "پاستا", "نودل", "لازانیا (heavy — pre-cook)"]],
-      [8, "Burgers & Sushi", "همبرگر و سوشی", "🍔", "international", "medium", 30, 45, false, false, "", ["همبرگر (Burger)", "سوشی (Sushi — often bought)"]],
-      [9, "Pastries & Baked", "خمیری و تنوری", "🥟", "iranian", "medium", 30, 45, false, false, "", ["پیراشکی", "سمبوسه", "کتلت"]],
-      [10, "Salad as Meal", "سالاد به‌عنوان وعده", "🥗", "either", "quick", 15, 30, false, false, "", ["سالاد ماکارونی (Macaroni Salad)", "سالاد اولویه (Olivieh Salad)", "سالاد سیب‌زمینی (Potato Salad)"]],
-      [11, "Cold & Simple", "سرد و راحت", "🌡️", "iranian", "quick", 10, 30, false, false, "", ["آبدوغ خیار (Abdoogh Khiar)", "عدسی (Lentil Stew)"]],
-      [12, "Pizza", "پیتزا", "🍕", "international", "medium", 30, 45, false, false, "Homemade or takeaway", []],
+      [1, "Quick Iranian", "غذای سریع ایرانی", "🍳", "iranian", "quick", 15, 35, false, false, "Eggs, kuku, falafel, bandari, and other low-effort Iranian dinners.", ["بندری (eggs + sausage + potatoes)", "تخم‌مرغ سوسیس", "تخم‌مرغ سیب‌زمینی", "املت", "کوکو سیب‌زمینی", "کوکو سبزی", "فلافل (frozen)"]],
+      [2, "Iranian Grills", "کباب‌های ایرانی", "🍢", "iranian", "medium", 30, 60, true, false, "Kebabs, joojeh, and other Iranian grilled mains.", ["جوجه کباب", "جوجه سیخی", "کباب ترش", "چلوکباب"]],
+      [3, "Iranian Stews & Slow Dishes", "خورشت و غذای آرام‌پز ایرانی", "🍲", "iranian", "heavy", 60, 150, true, true, "Khoresh and other longer-cooking Iranian weekend dishes; prep ahead when useful.", ["فسنجون", "مرغ ترش", "انواع خورش‌ها (Various stews)", "پلو ماهیچه"]],
+      [4, "Iranian Rice & Dami", "پلو و دمی ایرانی", "🍚", "iranian", "medium-heavy", 40, 90, false, false, "Polo, dami, tahchin, and one-pot or layered rice dishes.", ["هویج و مرغ لا پلو", "قارچ و مرغ لا پلو", "ته‌چین", "لوبیا پلو", "عدس پلو", "دمی گوجه"]],
+      [5, "International Mains", "غذای اصلی بین‌المللی", "🌍", "international", "medium", 25, 55, false, false, "International chicken, meat, vegetarian, curry, tray-bake, and stir-fry mains.", ["بیف استراگانف (Beef Stroganoff)", "باتر چیکن (Butter Chicken)", "تریاکی (Teriyaki)", "مرغ سوخاری (Fried Chicken)"]],
+      [6, "Seafood", "ماهی و غذاهای دریایی", "🐟", "either", "medium", 20, 50, false, false, "Fish or shellfish must be the main protein; pasta and rice preparations are allowed. Aim for at most once per week.", ["ماهی (Fish)", "میگو پاستا (Shrimp Pasta)", "میگو سوخاری (Fried Shrimp)", "حواری (Shrimp Rice / Meygo Polo)"]],
+      [7, "Pasta & Noodles", "پاستا و نودل", "🍝", "international", "quick", 20, 45, false, false, "Pasta or noodles must be the main format; include vegetables or a substantial side.", ["ماکارونی", "پاستا", "نودل", "لازانیا (heavy — pre-cook)"]],
+      [8, "Casual Favorites", "غذاهای خودمانی و محبوب", "🍔", "either", "medium", 20, 60, false, false, "Burgers, sushi, pizza, wraps, tacos, and similar relaxed family dinners; homemade or bought.", ["همبرگر (Burger)", "سوشی (Sushi — often bought)", "پیتزای خانگی سبزیجات و مرغ"]],
+      [9, "Handheld & Oven Meals", "غذای دستی و تنوری", "🥟", "either", "medium", 25, 60, false, false, "Savory pastries, samosas, patties, baked dishes, and other handheld or oven-friendly meals.", ["پیراشکی", "سمبوسه", "کتلت"]],
+      [10, "Salads & Light Plates", "سالاد و بشقاب سبک", "🥗", "either", "quick", 15, 35, false, false, "A complete lighter dinner built around vegetables plus a satisfying protein or grain; not only a side salad.", ["سالاد ماکارونی (Macaroni Salad)", "سالاد اولویه (Olivieh Salad)", "سالاد سیب‌زمینی (Potato Salad)"]],
+      [11, "Simple Soups & No-Cook", "سوپ و غذای ساده", "🥣", "either", "quick", 10, 35, false, false, "Soups, lentils, no-cook plates, and other genuinely simple dinners.", ["آبدوغ خیار (Abdoogh Khiar)", "عدسی (Lentil Stew)"]],
+      [12, "Flexible Choice", "انتخاب آزاد", "✨", "either", "medium", 10, 90, false, false, "No cuisine or format restriction. Prefer a liked family dish or a saved recipe that has not been tried yet.", []],
     ];
     for (const item of seed) {
       const category = new Record(categories);

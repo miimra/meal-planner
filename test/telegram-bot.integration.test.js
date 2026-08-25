@@ -339,6 +339,33 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
   const groupChat = { id: -100123, type: "group", title: "Home" };
   const privateChat = { id: 111, type: "private", first_name: "Alex" };
 
+  await t.test("the replacement dinner taxonomy and cross-category relations are migrated", async () => {
+    const categories = (await list("categories")).sort((left, right) => left.catId - right.catId);
+    assert.deepEqual(categories.map((item) => item.name_en), [
+      "Quick Iranian",
+      "Iranian Grills",
+      "Iranian Stews & Slow Dishes",
+      "Iranian Rice & Dami",
+      "International Mains",
+      "Seafood",
+      "Pasta & Noodles",
+      "Casual Favorites",
+      "Handheld & Oven Meals",
+      "Salads & Light Plates",
+      "Simple Soups & No-Cook",
+      "Flexible Choice",
+    ]);
+    const byCatId = new Map(categories.map((item) => [item.catId, item]));
+    const dishes = await list("dishes");
+    const pizza = dishes.find((item) => /پیتزا/.test(item.name));
+    const shrimpPasta = dishes.find((item) => /میگو پاستا/.test(item.name));
+    assert.equal(pizza.catId, 8);
+    assert.ok(pizza.categories.includes(byCatId.get(8).id));
+    assert.ok(pizza.categories.includes(byCatId.get(9).id));
+    assert.ok(shrimpPasta.categories.includes(byCatId.get(6).id));
+    assert.ok(shrimpPasta.categories.includes(byCatId.get(7).id));
+  });
+
   assert.equal((await webhook({ update_id: 1 }, "wrong-secret")).status, 404);
   await t.test("unauthorized users are silent", async () => {
     const before = mock.telegram.length;

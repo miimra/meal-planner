@@ -7,18 +7,17 @@ const MODIFIERS = [
 ];
 
 const CATEGORY_TERMS = {
-  1: ["egg", "eggs", "omelet", "omelette", "sausage", "potato", "bandari"],
+  1: ["egg", "eggs", "omelet", "omelette", "sausage", "potato", "bandari", "kuku", "falafel"],
   2: ["grill", "grilled", "kebab", "kabob", "chicken", "meat", "beef", "lamb", "joojeh"],
   3: ["stew", "khoresh", "meat", "beef", "lamb", "chicken", "fesenjan", "heavy"],
   4: ["rice", "polo", "pilaf", "dami", "tahchin", "chicken", "meat", "vegetable"],
-  5: ["chicken", "meat", "beef", "lamb", "curry", "teriyaki", "stroganoff"],
+  5: ["chicken", "meat", "beef", "lamb", "curry", "teriyaki", "stroganoff", "tofu", "vegetarian", "tray bake", "stir fry"],
   6: ["fish", "seafood", "sea food", "shrimp", "salmon", "tuna", "cod", "prawn"],
   7: ["pasta", "noodle", "noodles", "macaroni", "lasagna", "spaghetti"],
-  8: ["burger", "hamburger", "sushi"],
-  9: ["pastry", "baked", "samosa", "cutlet", "kotlet", "piroski"],
-  10: ["salad", "potato", "macaroni", "olivieh"],
-  11: ["cold", "lentil", "lentils", "abdoogh", "soup"],
-  12: ["pizza"],
+  8: ["burger", "hamburger", "sushi", "pizza", "wrap", "taco", "sandwich"],
+  9: ["pastry", "baked", "samosa", "cutlet", "kotlet", "piroski", "patty", "pie"],
+  10: ["salad", "bowl", "plate", "potato", "macaroni", "olivieh", "grain", "lentil"],
+  11: ["cold", "lentil", "lentils", "abdoogh", "soup", "no cook", "simple"],
 };
 
 function normalized(value) {
@@ -36,6 +35,7 @@ function foodTerms(value) {
 function matchesDinnerCategory(value, category, dishes) {
   const request = normalized(value);
   if (!request || !foodTerms(request).length) return true;
+  if (Number(category && category.catId) === 12) return true;
   const terms = CATEGORY_TERMS[Number(category && category.catId)] || [];
   if (terms.some((term) => request.indexOf(term) !== -1)) return true;
   const names = [category && category.name, category && category.nameFa];

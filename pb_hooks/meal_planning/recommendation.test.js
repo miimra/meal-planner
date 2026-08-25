@@ -35,6 +35,29 @@ test("category choices may allow more than one dinner category", () => {
   assert.deepEqual(ranked.map((item) => item.id), ["wrong", "saved", "liked"]);
 });
 
+test("a dish is eligible through any related category", () => {
+  const ranked = recommendation.rankCandidates([
+    { id: "shrimp-pasta", name: "Shrimp pasta", lifecycle: "regular", categoryId: 6, categoryIds: [6, 7] },
+    { id: "salmon", name: "Salmon", lifecycle: "regular", categoryId: 6, categoryIds: [6] },
+  ], {
+    categoryId: 7,
+    targetDate: "2026-08-20",
+  });
+  assert.deepEqual(ranked.map((item) => item.id), ["shrimp-pasta"]);
+});
+
+test("a flexible dinner still excludes legacy uncategorized dishes", () => {
+  const ranked = recommendation.rankCandidates([
+    { id: "dinner", name: "Family dinner", lifecycle: "regular", categoryId: 5, categoryIds: [5] },
+    { id: "breakfast", name: "Banana pancakes", lifecycle: "regular", categoryId: null, categoryIds: [] },
+  ], {
+    meal: "dinner",
+    categoryIds: [],
+    targetDate: "2026-08-20",
+  });
+  assert.deepEqual(ranked.map((item) => item.id), ["dinner"]);
+});
+
 test("feedback and recent cooking adjust candidate rank", () => {
   const ranked = recommendation.rankCandidates(dishes, {
     categoryId: 6,

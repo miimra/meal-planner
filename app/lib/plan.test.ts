@@ -6,8 +6,8 @@ import type { Category } from "./categories.ts";
 const categories: Category[] = [{
   pbId: "fish-record",
   catId: 6,
-  name_en: "Fish & Shrimp",
-  name_fa: "ماهی و میگو",
+  name_en: "Seafood",
+  name_fa: "ماهی و غذاهای دریایی",
   emoji: "🐟",
   style: "either",
   effort: "medium",
@@ -25,8 +25,8 @@ test("buildDay covers dinner only, and fills its rotation category", () => {
 test("buildDay exposes both Sunday dinner category choices", () => {
   const sundayCategories: Category[] = [
     ...categories,
-    { ...categories[0], pbId: "grill-record", catId: 2, name_en: "Iranian Grilled", name_fa: "کبابی ایرانی", emoji: "🍢" },
-    { ...categories[0], pbId: "stew-record", catId: 3, name_en: "Heavy Iranian Stews", name_fa: "خورشت‌های سنگین", emoji: "🍲" },
+    { ...categories[0], pbId: "grill-record", catId: 2, name_en: "Iranian Grills", name_fa: "کباب‌های ایرانی", emoji: "🍢" },
+    { ...categories[0], pbId: "stew-record", catId: 3, name_en: "Iranian Stews & Slow Dishes", name_fa: "خورشت و غذای آرام‌پز ایرانی", emoji: "🍲" },
   ];
   const day = buildDay("2026-08-16", sundayCategories, [], []);
   assert.equal(day.meals.dinner.category, null);
@@ -45,7 +45,7 @@ test("buildDay exposes exact assignments and special statuses", () => {
     ],
   );
   assert.equal(day.meals.dinner.dish?.name, "Lemon salmon");
-  assert.equal(day.meals.dinner.category?.name_en, "Fish & Shrimp");
+  assert.equal(day.meals.dinner.category?.name_en, "Seafood");
   assert.deepEqual(Object.keys(day.meals), ["dinner"]);
 });
 

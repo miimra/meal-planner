@@ -66,7 +66,12 @@ function rankCandidates(dishes, options) {
         || Array.isArray(dish.ingredients) && dish.ingredients.length > 8
       )) return false;
     }
-    return !categoryIds.length || categoryIds.indexOf(Number(dish.categoryId)) !== -1;
+    const dishCategoryIds = (Array.isArray(dish.categoryIds) && dish.categoryIds.length
+      ? dish.categoryIds
+      : [dish.categoryId]
+    ).map(Number).filter((item) => Boolean(item));
+    if (settings.meal === "dinner" && !categoryIds.length && !dishCategoryIds.length) return false;
+    return !categoryIds.length || categoryIds.some((catId) => dishCategoryIds.indexOf(catId) !== -1);
   }).map((dish) => {
     const feedback = feedbackSignal(feedbackByDish[dish.id]);
     const lastCooked = cookedByDish[dish.id] || null;
@@ -95,6 +100,13 @@ function rankCandidates(dishes, options) {
       score,
       signals,
       lastCooked,
+      notes: dish.notes || null,
+      ingredients: Array.isArray(dish.ingredients) ? dish.ingredients : [],
+      prepMinutes: Number(dish.prepMinutes || 0),
+      cookMinutes: Number(dish.cookMinutes || 0),
+      difficulty: dish.difficulty || null,
+      cuisine: dish.cuisine || null,
+      tags: Array.isArray(dish.tags) ? dish.tags : [],
     };
   }).sort((left, right) => (
     right.score - left.score

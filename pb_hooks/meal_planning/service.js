@@ -7,6 +7,8 @@ const preference = require(`${__hooks}/meal_planning/preference.js`);
 const prompt = require(`${__hooks}/openrouter/prompt.js`);
 const recommendation = require(`${__hooks}/meal_planning/recommendation.js`);
 
+const FLEXIBLE_CATEGORY_ID = 12;
+
 function first(app, collection, filter, params, sort) {
   const records = app.findRecordsByFilter(collection, filter, sort || "", 1, 0, params || {});
   return records.length ? records[0] : null;
@@ -54,6 +56,15 @@ function categoryValue(record) {
     name: record.getString("name_en"),
     nameFa: record.getString("name_fa"),
     emoji: record.getString("emoji"),
+    style: record.getString("style"),
+    effort: record.getString("effort"),
+    effortMinutes: {
+      min: record.getInt("effort_min"),
+      max: record.getInt("effort_max"),
+    },
+    weekendOnly: record.getBool("weekend_only"),
+    prepAhead: record.getBool("prep_ahead"),
+    notes: record.getString("notes") || null,
   } : null;
 }
 
@@ -128,12 +139,21 @@ function suggestedNames(app, fromDate, meal, toDate) {
 
 function aiContext(app, targetDate, meals) {
   const week = weekValue(app, targetDate);
+  const categoryIdByRecordId = {};
+  for (const category of app.findRecordsByFilter("categories", "", "catId", 0, 0)) {
+    categoryIdByRecordId[category.id] = category.getInt("catId");
+  }
   const dishes = app.findRecordsByFilter("dishes", "", "name", 0, 0).map((dish) => {
     const tags = json.arrayField(dish, "tags").slice(0, 20).map((item) => String(item).slice(0, 100));
+    const categoryId = dish.getInt("catId") || null;
+    const categoryIds = unique([categoryId].concat(
+      dish.getStringSlice("categories").map((id) => categoryIdByRecordId[id]),
+    ));
     return {
     id: dish.id,
     name: dish.getString("name"),
-    categoryId: dish.getInt("catId") || null,
+    categoryId,
+    categoryIds,
     notes: String(dish.getString("notes") || "").slice(0, 500) || null,
     lifecycle: dish.getString("lifecycle") || "regular",
     sourceUrl: dish.getString("source_url") || null,
@@ -174,7 +194,7 @@ function aiContext(app, targetDate, meals) {
     servings[meal] = calendar.servingProfile(targetDate, meal);
     const rotation = meal === "dinner" ? calendar.dinnerRotation(targetDate) : null;
     const categoryIds = requested[meal].category
-      ? [requested[meal].category.catId]
+      ? (requested[meal].category.catId === FLEXIBLE_CATEGORY_ID ? [] : [requested[meal].category.catId])
       : (rotation && rotation.kind === "choice" ? rotation.catIds : []);
     const ranking = { meal, assignedDishIds, categoryIds, feedback, occurrences, targetDate };
     // Anything already shown for this exact slot, plus everything suggested for

@@ -162,8 +162,12 @@ Suggestions are vegetable-forward, non-spicy, low in added salt and sugar,
 and include a dish-specific baby instruction only when the baby is eating.
 Breakfast and lunch are always very simple (easy, at most 20 minutes, and no
 more than eight ingredients). Dinner's visible rotation category is the main
-planning constraint. Ingredients and baby details live behind the card's
-**Details** button so photo captions stay compact.
+planning theme; **Flexible Choice** deliberately opens the full eligible meal
+library. Category notes, effort ranges, multi-category dish relations, and
+compact recipe facts all participate in selection. The canonical category list
+and rotation are kept in [`docs/meal-categories.md`](docs/meal-categories.md).
+Ingredients and baby details live behind the card's **Details** button so photo
+captions stay compact.
 
 Opening a suggestion lazily requests one square, realistic, text-free food
 image from OpenRouter. The protected image and Telegram `file_id` are cached

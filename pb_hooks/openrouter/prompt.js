@@ -1,11 +1,10 @@
 "use strict";
 
-const PROMPT_VERSION = "telegram-v7-compact-context";
+const PROMPT_VERSION = "telegram-v8-category-taxonomy";
 
-// ponytail: the model only needs the ranked shortlist, not the library. Raw
-// feedback and cooked history are already folded into each candidate's score and
-// signals, and stored dish details are re-applied after the call, so shipping the
-// full dishes/feedback/occurrences arrays was paying tokens (and latency) twice.
+// ponytail: the model needs the ranked shortlist and the compact recipe facts
+// required to make a meaningful choice, not the whole library. Raw feedback and
+// cooked history are already folded into each candidate's score and signals.
 function payload(context, meals, preferences, excludedPreferences) {
   const source = context || {};
   const plannedThisWeek = [];
@@ -24,6 +23,13 @@ function payload(context, meals, preferences, excludedPreferences) {
       lifecycle: item.lifecycle,
       score: item.score,
       signals: item.signals,
+      notes: item.notes || null,
+      difficulty: item.difficulty || null,
+      prepMinutes: Number(item.prepMinutes || 0),
+      cookMinutes: Number(item.cookMinutes || 0),
+      cuisine: item.cuisine || null,
+      tags: (item.tags || []).slice(0, 12),
+      ingredients: (item.ingredients || []).slice(0, 10),
     }));
     doNotSuggest[meal] = ((source.avoid || {})[meal] || []).slice(0, 30);
   }
@@ -75,12 +81,14 @@ function messages(context, meals, preferences, excludedPreferences) {
         "Use no chili or spicy heat.",
         "Make meals vegetable-forward with generous vegetables.",
         "Use little added salt and sugar; prefer herbs, lemon, and naturally flavorful ingredients.",
-        "The supplied dinnerCategory is the highest-priority planning rule and the dinner must clearly belong to it.",
+        "The supplied dinnerCategory is the highest-priority planning theme and the dinner must clearly belong to it.",
+        "Use the dinnerCategory notes, effort, and effortMinutes as real selection constraints, not merely display labels.",
+        "When dinnerCategory is Flexible Choice, there is no cuisine or format restriction; prefer a high-ranked liked dish or saved untried recipe.",
         "Never blend in a conflicting food type merely to satisfy a user preference.",
         "Breakfast and lunch have no category and must be very simple: easy difficulty, no more than 20 total minutes, and no more than 8 ingredients.",
         "Avoid dishes listed in plannedThisWeek.",
         "Never suggest a dish named in that meal's doNotSuggest list, and do not suggest a near-identical variation of one; those were already offered recently and rejected.",
-        "For an existing stored dish, choose only an ID listed in candidates for that meal; candidates are already filtered by category, archive state, and recent repetition.",
+        "For an existing stored dish, choose only an ID listed in candidates for that meal; candidates are already filtered by category relations, archive state, and recent repetition.",
         "Candidate score is a deterministic ranking signal based on household feedback, recency, and a bounded exploration boost for saved untried recipes; prefer higher scores while keeping variety.",
         "A want_to_try candidate is a confirmed recipe the household explicitly saved and is eligible to be suggested like any other dish.",
         "When choosing a candidate, set existingDishId to its exact ID and preserve its exact name; its stored ingredients, difficulty, and times are re-applied afterwards.",
