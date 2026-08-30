@@ -243,7 +243,7 @@ secure webhook using the production `.env`.
 The deployed runtime uses:
 
 ```text
-host: user@your-server
+host: ovh-prod (ubuntu@vps-90c7df32.vps.ovh.net)
 port: 8091
 volume: meal-planner-pb-data -> /pb/pb_data
 checkout: /srv/meal-planner (main)

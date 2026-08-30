@@ -8,7 +8,7 @@ cd "$root"
 [[ -f .deploy.env ]] && source ./.deploy.env
 
 branch="${DEPLOY_BRANCH:-main}"
-remote_host="${DEPLOY_HOST:-user@your-server}"
+remote_host="${DEPLOY_HOST:-ovh-prod}"
 remote_path="${DEPLOY_PATH:-/srv/meal-planner}"
 public_health_url="${DEPLOY_HEALTH_URL:-https://meals.example.com/api/health}"
 

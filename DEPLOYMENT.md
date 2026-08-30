@@ -5,7 +5,7 @@ serves both the bot API and the statically exported Next.js overview.
 
 | Field | Value |
 | --- | --- |
-| Host | `user@your-server` |
+| Host | `ovh-prod` (`ubuntu@vps-90c7df32.vps.ovh.net`) |
 | Checkout | `/srv/meal-planner` |
 | Branch | `main` |
 | Configuration | `/srv/meal-planner/.env` (`0600`) |
@@ -52,7 +52,7 @@ container is what reloads its environment.
 ## Verify and inspect
 
 ```bash
-ssh user@your-server
+ssh ovh-prod
 cd /srv/meal-planner
 docker compose ps
 docker compose logs --tail=100 meal-planner
@@ -77,7 +77,7 @@ container cannot start or pass its local health checks. For a manual image
 rollback after a later issue:
 
 ```bash
-ssh user@your-server
+ssh ovh-prod
 cd /srv/meal-planner
 MEAL_PLANNER_IMAGE=meal-planner:rollback \
   docker compose up -d --no-build --force-recreate --remove-orphans
