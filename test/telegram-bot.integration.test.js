@@ -506,6 +506,50 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.equal(mock.telegram.length, before);
   });
 
+  await t.test("snoozing pauses notifications for a chosen period and resuming clears it", async () => {
+    const settingsMessageId = 101;
+    let panel = mock.telegram.filter((call) => call.method === "editMessageText" && call.body.message_id === settingsMessageId).at(-1);
+    assert.match(JSON.stringify(panel.body.reply_markup), /"set:snooze:2h"/);
+    assert.match(JSON.stringify(panel.body.reply_markup), /"set:snooze:tomorrow"/);
+    assert.match(JSON.stringify(panel.body.reply_markup), /"set:snooze:week"/);
+
+    const before = Date.now();
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "snooze-2h", from: { id: 111 }, data: "set:snooze:2h", message: { message_id: settingsMessageId, chat: groupChat } } });
+    let chat = (await list("telegram_chats")).find((item) => item.chat_id === String(groupChat.id));
+    assert.ok(chat.snoozed_until, "snoozed_until is set");
+    const snoozedMs = new Date(chat.snoozed_until).getTime() - before;
+    assert.ok(snoozedMs > 1.9 * 60 * 60 * 1000 && snoozedMs < 2.1 * 60 * 60 * 1000, "roughly two hours ahead, got " + snoozedMs);
+    const confirmSnooze = mock.telegram.filter((call) => call.method === "answerCallbackQuery").at(-1);
+    assert.match(confirmSnooze.body.text, /snoozed/i);
+    panel = mock.telegram.filter((call) => call.method === "editMessageText" && call.body.message_id === settingsMessageId).at(-1);
+    assert.match(panel.body.text, /paused/i);
+    assert.doesNotMatch(JSON.stringify(panel.body.reply_markup), /set:snooze:2h|set:snooze:tomorrow|set:snooze:week/);
+    assert.match(JSON.stringify(panel.body.reply_markup), /"set:snooze:off"/);
+    assert.match(JSON.stringify(panel.body.reply_markup), /Resume notifications now/);
+
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "resume", from: { id: 111 }, data: "set:snooze:off", message: { message_id: settingsMessageId, chat: groupChat } } });
+    chat = (await list("telegram_chats")).find((item) => item.chat_id === String(groupChat.id));
+    assert.equal(chat.snoozed_until, "");
+    const confirmResume = mock.telegram.filter((call) => call.method === "answerCallbackQuery").at(-1);
+    assert.match(confirmResume.body.text, /resumed/i);
+    panel = mock.telegram.filter((call) => call.method === "editMessageText" && call.body.message_id === settingsMessageId).at(-1);
+    assert.doesNotMatch(panel.body.text, /paused/i);
+    assert.match(JSON.stringify(panel.body.reply_markup), /"set:snooze:2h"/);
+
+    // Turning the reminder off hides the snooze controls entirely, and back on
+    // never lands in a silently snoozed state even if one was set beforehand.
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "snooze-week", from: { id: 111 }, data: "set:snooze:week", message: { message_id: settingsMessageId, chat: groupChat } } });
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "daily-off", from: { id: 111 }, data: "set:daily:off", message: { message_id: settingsMessageId, chat: groupChat } } });
+    panel = mock.telegram.filter((call) => call.method === "editMessageText" && call.body.message_id === settingsMessageId).at(-1);
+    assert.doesNotMatch(JSON.stringify(panel.body.reply_markup), /set:snooze/);
+    assert.equal((await list("telegram_chats")).find((item) => item.chat_id === String(groupChat.id)).snoozed_until, "");
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "daily-on-again", from: { id: 111 }, data: "set:daily:on", message: { message_id: settingsMessageId, chat: groupChat } } });
+    chat = (await list("telegram_chats")).find((item) => item.chat_id === String(groupChat.id));
+    assert.equal(chat.snoozed_until, "", "re-enabling never lands in a silently snoozed state");
+    panel = mock.telegram.filter((call) => call.method === "editMessageText" && call.body.message_id === settingsMessageId).at(-1);
+    assert.doesNotMatch(panel.body.text, /paused/i);
+  });
+
   await t.test("meal-change screens show current food and require an explicit Sunday category", async () => {
     // Dinner is the only planned meal, so choosing a date opens the change
     // panel itself instead of a chooser holding a single button.

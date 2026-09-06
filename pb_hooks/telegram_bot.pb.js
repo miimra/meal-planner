@@ -40,7 +40,7 @@ cronAdd(
     try {
       const scheduler = require(`${__hooks}/telegram/scheduler.js`);
       const result = scheduler.sendWeekly($app);
-      $app.logger().info("Telegram weekly dinner plan completed", "chats", result.chats, "sent", result.sent, "week", result.weekStart);
+      $app.logger().info("Telegram weekly dinner plan completed", "chats", result.chats, "sent", result.sent, "week", result.weekStart, "snoozed", result.snoozed);
     } catch (error) {
       const code = String(error && error.message || "internal_error");
       $app.logger().error("Telegram weekly dinner plan failed", "error_code", /^[a-z0-9_]+$/i.test(code) ? code : "internal_error");
@@ -58,7 +58,7 @@ cronAdd(
       const scheduler = require(`${__hooks}/telegram/scheduler.js`);
       const result = scheduler.sendNudges($app);
       if (result.skipped) $app.logger().debug("Telegram plan nudge skipped", "reason", result.skipped);
-      else $app.logger().info("Telegram plan nudge sent", "chats", result.chats, "sent", result.sent, "open", result.open);
+      else $app.logger().info("Telegram plan nudge sent", "chats", result.chats, "sent", result.sent, "open", result.open, "snoozed", result.snoozed, "catchUp", Boolean(result.catchUp));
     } catch (error) {
       const code = String(error && error.message || "internal_error");
       $app.logger().error("Telegram plan nudge failed", "error_code", /^[a-z0-9_]+$/i.test(code) ? code : "internal_error");

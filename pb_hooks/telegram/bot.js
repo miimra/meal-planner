@@ -8,6 +8,7 @@ const activity = require(`${__hooks}/telegram/activity.js`);
 const client = require(`${__hooks}/telegram/client.js`);
 const commands = require(`${__hooks}/telegram/commands.js`);
 const security = require(`${__hooks}/telegram/security.js`);
+const snoozeDurations = require(`${__hooks}/telegram/snooze.js`);
 const state = require(`${__hooks}/telegram/state.js`);
 const views = require(`${__hooks}/telegram/views.js`);
 const recipeImports = require(`${__hooks}/recipe_import/service.js`);
@@ -134,6 +135,12 @@ function sendNudge(app, destination, weekStart) {
   return sendPanel(destination, views.nudgeText(view.week, planning.today()), view.keyboard);
 }
 
+function settingsView(app, destination) {
+  const enabled = destination.getBool("daily_enabled");
+  const label = enabled && state.isSnoozed(destination) ? planning.localWeekdayTime(destination.getString("snoozed_until")) : null;
+  return { text: views.settingsText(enabled, label), keyboard: views.settingsKeyboard(enabled, label) };
+}
+
 function editHome(app, destination, message) {
   const view = homeView(app, destination);
   return editPanel(destination, message, view.text, view.keyboard);
@@ -249,7 +256,8 @@ function handleCommand(app, user, destination, message, parsed) {
     return true;
   }
   if (parsed.command === "settings") {
-    sendPanel(destination, views.settingsText(destination.getBool("daily_enabled")), views.settingsKeyboard(destination.getBool("daily_enabled")), message.message_id);
+    const view = settingsView(app, destination);
+    sendPanel(destination, view.text, view.keyboard, message.message_id);
     return true;
   }
   if (parsed.command === "ask") {
@@ -270,7 +278,10 @@ function handleNavigation(app, destination, message, parts) {
     return editPanel(destination, message, view.text, view.keyboard);
   }
   if (parts[1] === "ask") return editPanel(destination, message, views.askText(commands.botUsername()), { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] });
-  if (parts[1] === "settings") return editPanel(destination, message, views.settingsText(destination.getBool("daily_enabled")), views.settingsKeyboard(destination.getBool("daily_enabled")));
+  if (parts[1] === "settings") {
+    const view = settingsView(app, destination);
+    return editPanel(destination, message, view.text, view.keyboard);
+  }
   if (parts[1] === "more") return editPanel(destination, message, views.moreText(), views.moreKeyboard());
   if (parts[1] === "change") return editPanel(destination, message, "✏️ <b>Choose a date</b>", views.dateKeyboard(today));
   if (parts[1] === "day" && parts[2]) return editPanel(destination, message, views.dayText(planning.dayValue(app, parts[2]), parts[2] === today ? "Today" : parts[2] === tomorrow ? "Tomorrow" : "Meal plan"), views.dayKeyboard(parts[2]));
@@ -370,8 +381,25 @@ function handleCallback(app, user, destination, query) {
     if (parts[0] === "set" && parts[1] === "daily") {
       const enabled = parts[2] === "on";
       destination = state.subscribe(app, destination, enabled);
-      editPanel(destination, query.message, views.settingsText(enabled), views.settingsKeyboard(enabled));
+      const view = settingsView(app, destination);
+      editPanel(destination, query.message, view.text, view.keyboard);
       client.answerCallback(query.id, enabled ? "Weekly reminder enabled" : "Weekly reminder disabled", false);
+      return true;
+    }
+    if (parts[0] === "set" && parts[1] === "snooze") {
+      if (parts[2] === "off") {
+        destination = state.resume(app, destination);
+        const view = settingsView(app, destination);
+        editPanel(destination, query.message, view.text, view.keyboard);
+        client.answerCallback(query.id, "Notifications resumed", false);
+        return true;
+      }
+      const until = snoozeDurations.resolve(parts[2]);
+      if (!until) throw new Error("invalid_snooze_duration");
+      destination = state.snooze(app, destination, until);
+      const view = settingsView(app, destination);
+      editPanel(destination, query.message, view.text, view.keyboard);
+      client.answerCallback(query.id, "Notifications snoozed for " + snoozeDurations.label(parts[2]), false);
       return true;
     }
     if (parts[0] === "pick" && parts[1] === "date" && parts[2]) {

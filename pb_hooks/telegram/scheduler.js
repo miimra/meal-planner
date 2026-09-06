@@ -4,6 +4,7 @@ const calendar = require(`${__hooks}/meal_planning/calendar.js`);
 const planning = require(`${__hooks}/meal_planning/service.js`);
 const views = require(`${__hooks}/telegram/views.js`);
 const bot = require(`${__hooks}/telegram/bot.js`);
+const state = require(`${__hooks}/telegram/state.js`);
 
 const NUDGE_DELAY_MS = 60 * 60 * 1000;
 
@@ -60,12 +61,36 @@ function sendWeekly(app) {
   const chats = activeChats(app);
   const weekStart = calendar.planningWeekStart(planning.today());
   let sent = 0;
+  let snoozed = 0;
   for (const chat of chats) {
+    if (state.isSnoozed(chat)) { snoozed += 1; continue; }
     const delivery = claimDelivery(app, chat, weekStart, "weekly");
     if (!delivery) continue;
     if (deliver(app, chat, delivery, () => bot.sendWeeklyPlan(app, chat, weekStart), "Telegram weekly plan failed")) sent += 1;
   }
-  return { chats: chats.length, sent, weekStart };
+  return { chats: chats.length, sent, weekStart, snoozed };
+}
+
+// A cross-Sunday snooze leaves no "weekly" delivery run for the week it swallowed,
+// which is otherwise a dead end: sendNudges below never speaks for a week nothing
+// announced. Once the snooze has expired, the first nudge tick catches the
+// household up by sending the weekly plan itself and claiming that delivery run,
+// exactly as the Sunday cron would have. It never fires for a week that has not
+// started yet, so it can never race the Sunday cron itself.
+function catchUpWeekly(app, weekStart) {
+  const open = views.actionableDinners(planning.weekValue(app, weekStart), planning.today());
+  if (!open.length) return { skipped: "week_complete", weekStart };
+
+  const chats = activeChats(app);
+  let sent = 0;
+  let snoozed = 0;
+  for (const chat of chats) {
+    if (state.isSnoozed(chat)) { snoozed += 1; continue; }
+    const delivery = claimDelivery(app, chat, weekStart, "weekly");
+    if (!delivery) continue;
+    if (deliver(app, chat, delivery, () => bot.sendWeeklyPlan(app, chat, weekStart), "Telegram weekly plan catch-up failed")) sent += 1;
+  }
+  return { chats: chats.length, sent, weekStart, open: open.length, snoozed, catchUp: true };
 }
 
 /**
@@ -82,7 +107,12 @@ function sendNudges(app) {
     { current: currentWeek },
     "-target_date",
   );
-  if (!announced) return { skipped: "no_announced_week" };
+
+  if (!announced) {
+    const weekStart = calendar.planningWeekStart(planning.today());
+    if (weekStart > planning.today()) return { skipped: "no_announced_week" };
+    return catchUpWeekly(app, weekStart);
+  }
 
   const announcedAt = new Date(announced.getString("updated")).getTime();
   if (!Number.isFinite(announcedAt) || Date.now() - announcedAt < NUDGE_DELAY_MS) {
@@ -95,7 +125,9 @@ function sendNudges(app) {
 
   const chats = activeChats(app);
   let sent = 0;
+  let snoozed = 0;
   for (const chat of chats) {
+    if (state.isSnoozed(chat)) { snoozed += 1; continue; }
     try {
       bot.sendNudge(app, chat, weekStart);
       sent += 1;
@@ -103,7 +135,7 @@ function sendNudges(app) {
       app.logger().error("Telegram plan nudge failed", "chat_record", chat.id, "error_code", safeCode(error));
     }
   }
-  return { chats: chats.length, sent, weekStart, open: open.length };
+  return { chats: chats.length, sent, weekStart, open: open.length, snoozed };
 }
 
 module.exports = { sendNudges, sendWeekly };
