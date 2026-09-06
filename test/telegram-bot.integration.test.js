@@ -411,6 +411,9 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
 
   const today = amsterdamDate();
   const tomorrow = addDays(today, 1);
+  // Whether "today" itself needs the Sunday category gate: true on one day in
+  // seven, whatever real-world weekday the suite happens to run on.
+  const todayIsSunday = nextWeekday(today, 0) === today;
   // Monday, Tuesday and Wednesday always resolve to a single dinner category,
   // so these flows never hit the Sunday choice gate whatever day the suite runs.
   const planDay = nextWeekday(addDays(today, 1), 1);
@@ -551,29 +554,42 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
   });
 
   await t.test("meal-change screens show current food and require an explicit Sunday category", async () => {
+    // The single-category flow below assumes a non-Sunday date. On the one
+    // day in seven where "today" itself is a Sunday, exercise it against
+    // tomorrow (always Monday, never the gate) instead, seeding that date's
+    // assignment ourselves since only "today" was seeded earlier.
+    const changeDay = todayIsSunday ? tomorrow : today;
+    if (todayIsSunday) {
+      const chosenDish = (await list("dishes"))[0];
+      await create("meal_assignments", { date: changeDay, meal: "dinner", dish: chosenDish.id, status: "planned", selection_source: "telegram" });
+    }
+
     // Dinner is the only planned meal, so choosing a date opens the change
     // panel itself instead of a chooser holding a single button.
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "change-today", from: { id: 111 }, data: `pick:date:${today}`, message: { message_id: 704, chat: groupChat } } });
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "change-today", from: { id: 111 }, data: `pick:date:${changeDay}`, message: { message_id: 704, chat: groupChat } } });
     let edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
-    assert.match(edit.body.text, new RegExp("Change " + today + " · Dinner"));
+    assert.match(edit.body.text, new RegExp("Change " + changeDay + " · Dinner"));
     assert.match(edit.body.text, new RegExp((await list("dishes"))[0].name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.match(JSON.stringify(edit.body.reply_markup), /Leftovers/);
     assert.match(JSON.stringify(edit.body.reply_markup), /Not cooking/);
     assert.doesNotMatch(JSON.stringify(edit.body.reply_markup), /do:buy|do:out|do:skip/);
 
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "not-cooking", from: { id: 111 }, data: `do:notcooking:${today}:dinner`, message: { message_id: 704, chat: groupChat } } });
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "not-cooking", from: { id: 111 }, data: `do:notcooking:${changeDay}:dinner`, message: { message_id: 704, chat: groupChat } } });
     edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
     assert.match(edit.body.text, /Not cooking/);
     assert.match(JSON.stringify(edit.body.reply_markup), /do:buy/);
     assert.match(JSON.stringify(edit.body.reply_markup), /do:out/);
     assert.match(JSON.stringify(edit.body.reply_markup), /do:skip/);
 
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "change-dinner", from: { id: 111 }, data: `pick:meal:${today}:dinner`, message: { message_id: 704, chat: groupChat } } });
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "change-dinner", from: { id: 111 }, data: `pick:meal:${changeDay}:dinner`, message: { message_id: 704, chat: groupChat } } });
     edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
     assert.match(edit.body.text, /Current: <b>.+<\/b>/);
     assert.match(JSON.stringify(edit.body.reply_markup), /Leftovers/);
 
-    const sunday = nextWeekday(today, 0);
+    // Search from tomorrow, not today: today itself may already be Sunday
+    // (see changeDay above), and picking a category here mutates whichever
+    // assignment lives on this date, so it must never land back on today's.
+    const sunday = nextWeekday(tomorrow, 0);
     await webhook({ update_id: nextUpdate(), callback_query: { id: "sunday-dinner", from: { id: 111 }, data: `pick:meal:${sunday}:dinner`, message: { message_id: 705, chat: groupChat } } });
     edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
     assert.match(edit.body.text, /Category: <b>choose/);
