@@ -32,6 +32,42 @@ function isoNow() {
   return nowLocal().format("2006-01-02T15:04:05-07:00");
 }
 
+function appTimezone() {
+  return String($os.getenv("APP_TIMEZONE") || "Europe/Amsterdam");
+}
+
+function pad(value) {
+  return String(value).length < 2 ? "0" + value : String(value);
+}
+
+// The offset of a local calendar day, found by asking the timezone what a
+// midday instant on that day looks like there. Noon keeps this clear of the
+// (rare, early-morning) instant when a DST transition itself occurs.
+function timezoneOffsetMinutes(dateString, timezone) {
+  const noon = new DateTime(dateString + " 12:00:00");
+  const formatted = noon.time().in(new Timezone(timezone)).format("-07:00");
+  const sign = formatted.charAt(0) === "-" ? -1 : 1;
+  const hours = Number(formatted.slice(1, 3));
+  const minutes = Number(formatted.slice(4, 6));
+  return sign * (hours * 60 + minutes);
+}
+
+// The absolute instant corresponding to a wall-clock hour:minute on a given
+// calendar day in APP_TIMEZONE, as an ISO timestamp needing no further
+// timezone logic to compare against.
+function localTimestamp(dateString, hour, minute) {
+  const offsetMinutes = timezoneOffsetMinutes(dateString, appTimezone());
+  const asUtc = Date.parse(dateString + "T" + pad(hour) + ":" + pad(minute) + ":00Z");
+  return new Date(asUtc - offsetMinutes * 60 * 1000).toISOString();
+}
+
+// The reverse direction: an absolute instant rendered as its local weekday
+// and wall-clock time, e.g. "Mon 09:00", for display.
+function localWeekdayTime(isoTimestamp) {
+  const instant = new DateTime(isoTimestamp);
+  return instant.time().in(new Timezone(appTimezone())).format("Mon 15:04");
+}
+
 function assignmentFor(app, date, meal) {
   return first(app, "meal_assignments", "date = {:date} && meal = {:meal}", { date, meal });
 }
@@ -490,6 +526,8 @@ module.exports = {
   ensureOccurrence,
   generateSuggestions,
   isoNow,
+  localTimestamp,
+  localWeekdayTime,
   saveFeedback,
   selectDinnerCategory,
   setManualDish,

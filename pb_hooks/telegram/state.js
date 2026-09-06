@@ -42,6 +42,7 @@ function subscribe(app, chatRecord, enabled) {
   if (!enabled) {
     chatRecord.set("daily_enabled", false);
     chatRecord.set("active", true);
+    chatRecord.set("snoozed_until", "");
     app.save(chatRecord);
     return chatRecord;
   }
@@ -55,9 +56,32 @@ function subscribe(app, chatRecord, enabled) {
     const current = tx.findRecordById("telegram_chats", chatRecord.id);
     current.set("daily_enabled", true);
     current.set("active", true);
+    current.set("snoozed_until", "");
     tx.save(current);
   });
   return app.findRecordById("telegram_chats", chatRecord.id);
+}
+
+// A chat counts as snoozed only while snoozed_until parses to a strictly
+// future timestamp; anything else (empty, garbage, already past) is "not
+// snoozed" rather than an error, since it gates every scheduled send.
+function isSnoozed(chatRecord) {
+  const value = chatRecord.getString("snoozed_until");
+  if (!value) return false;
+  const until = new Date(value).getTime();
+  return Number.isFinite(until) && until > Date.now();
+}
+
+function snooze(app, chatRecord, until) {
+  chatRecord.set("snoozed_until", until);
+  app.save(chatRecord);
+  return chatRecord;
+}
+
+function resume(app, chatRecord) {
+  chatRecord.set("snoozed_until", "");
+  app.save(chatRecord);
+  return chatRecord;
 }
 
 function setConversation(app, user, chat, occurrence, messageId) {
@@ -104,6 +128,9 @@ module.exports = {
   authorizedUser,
   clearConversation,
   ensureChat,
+  isSnoozed,
+  resume,
   setConversation,
+  snooze,
   subscribe,
 };
