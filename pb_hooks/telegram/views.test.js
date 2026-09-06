@@ -115,6 +115,38 @@ test("the nudge names the open days and nothing else", () => {
   assert.doesNotMatch(text, /Lemon|Mon|Wed/);
 });
 
+test("settings shows no snooze controls while the weekly reminder is off", () => {
+  assert.match(views.settingsText(false), /Off<\/b>/);
+  assert.doesNotMatch(views.settingsText(false), /paused/);
+  const buttons = JSON.stringify(views.settingsKeyboard(false));
+  assert.match(buttons, /"set:daily:on"/);
+  assert.doesNotMatch(buttons, /set:snooze/);
+});
+
+test("settings offers three snooze durations when the reminder is on and not snoozed", () => {
+  assert.match(views.settingsText(true), /On<\/b>/);
+  assert.doesNotMatch(views.settingsText(true), /paused/);
+  const keyboard = views.settingsKeyboard(true);
+  const buttons = JSON.stringify(keyboard);
+  assert.match(buttons, /"set:daily:off"/);
+  assert.match(buttons, /"set:snooze:2h"/);
+  assert.match(buttons, /"set:snooze:tomorrow"/);
+  assert.match(buttons, /"set:snooze:week"/);
+  for (const row of keyboard.inline_keyboard) {
+    for (const button of row) assert.ok(Buffer.byteLength(button.callback_data, "utf8") < 64, button.callback_data);
+  }
+});
+
+test("settings shows the resume button and end time while snoozed", () => {
+  const text = views.settingsText(true, "Mon 09:00");
+  assert.match(text, /paused.*until.*Mon 09:00/s);
+  const buttons = JSON.stringify(views.settingsKeyboard(true, "Mon 09:00"));
+  assert.match(buttons, /"set:snooze:off"/);
+  assert.match(buttons, /Resume notifications now/);
+  assert.doesNotMatch(buttons, /set:daily/);
+  assert.doesNotMatch(buttons, /"set:snooze:2h"/);
+});
+
 test("home and More expose the compact menu without question or settings detours", () => {
   const openHome = JSON.stringify(views.homeKeyboard("2026-08-19", "2026-08-20", false, false, 3));
   assert.match(openHome, /✨ Plan tomorrow/);
