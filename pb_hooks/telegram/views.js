@@ -1,7 +1,6 @@
 "use strict";
 
 const calendar = require(`${__hooks}/meal_planning/calendar.js`);
-const json = require(`${__hooks}/shared/json.js`);
 const snoozeDurations = require(`${__hooks}/telegram/snooze.js`);
 
 const LABELS = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner" };
@@ -554,7 +553,6 @@ function suggestionCaption(suggestion, slot, selected) {
 }
 
 function suggestionDetails(suggestion, slot) {
-  const ingredients = json.arrayField(suggestion, "ingredients");
   const serving = calendar.servingProfile(suggestion.getString("date"), slot.meal);
   const lines = [
     "🔎 <b>Suggestion details</b>",
@@ -564,7 +562,6 @@ function suggestionDetails(suggestion, slot) {
     "Difficulty: <b>" + escape(suggestion.getString("difficulty")) + "</b>",
     "Time: <b>" + (suggestion.getInt("prep_minutes") + suggestion.getInt("cook_minutes")) + " min</b>",
   ];
-  if (ingredients.length) lines.push("", "🛒 <b>Ingredients</b>", ingredients.map((item) => "• " + escape(item)).join("\n"));
   if (suggestion.getString("baby_notes")) lines.push("", "👶 <b>Baby serving</b>\n" + escape(suggestion.getString("baby_notes")));
   return lines.join("\n");
 }

@@ -11,6 +11,14 @@ function slot(meal, overrides) {
   return Object.assign({ meal, status: "unplanned", dish: null, category: null, categoryOptions: [] }, overrides || {});
 }
 
+function fakeSuggestion(fields) {
+  return {
+    get: (name) => fields[name],
+    getString: (name) => String(fields[name] || ""),
+    getInt: (name) => Number(fields[name] || 0),
+  };
+}
+
 test("meal change views show the existing choice, dinner category, and neutral leftovers action", () => {
   const dinner = slot("dinner", {
     status: "planned",
@@ -209,6 +217,21 @@ test("an ingredients reply round trip carries its own dish, date, and meal", () 
   assert.deepEqual(views.parseIngredientList("   "), []);
   assert.doesNotMatch(views.ownDishSavedText("2026-08-16", "dinner", "Lasagne", ["500 g beef"]), /Ingredients|🛒/);
   assert.doesNotMatch(views.ownDishSavedText("2026-08-16", "dinner", "Lasagne", []), /Ingredients|🛒/);
+});
+
+test("suggestion details never echo an ingredients list back into the chat", () => {
+  const suggestion = fakeSuggestion({
+    date: "2026-08-16",
+    suggested_name: "Lemon salmon",
+    difficulty: "easy",
+    prep_minutes: 10,
+    cook_minutes: 20,
+    ingredients: ["500 g salmon", "1 lemon"],
+  });
+  const details = views.suggestionDetails(suggestion, slot("dinner"));
+  assert.doesNotMatch(details, /Ingredients|🛒|500 g salmon/);
+  assert.match(details, /Lemon salmon/);
+  assert.match(details, /Difficulty: <b>easy<\/b>/);
 });
 
 test("an own-dish reply round trip carries its own date and meal", () => {
