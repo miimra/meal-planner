@@ -138,6 +138,13 @@ test("settings shows no snooze controls while the weekly reminder is off", () =>
   assert.doesNotMatch(buttons, /set:snooze/);
 });
 
+test("settings describes the current every-3-hours nudge cadence and no longer invites a recipe link", () => {
+  const text = views.settingsText(true);
+  assert.match(text, /every 3 hours/);
+  assert.doesNotMatch(text, /hourly/);
+  assert.doesNotMatch(text, /recipe link/i);
+});
+
 test("settings offers three snooze durations when the reminder is on and not snoozed", () => {
   assert.match(views.settingsText(true), /On<\/b>/);
   assert.doesNotMatch(views.settingsText(true), /paused/);

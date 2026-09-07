@@ -380,11 +380,11 @@ function dayKeyboard(date) {
 }
 
 function settingsText(enabled, snoozedUntilLabel) {
-  const header = "⚙️ <b>Settings</b>\n\nWeekly dinner reminder, <b>Sunday 14:00 Europe/Amsterdam</b>: <b>" + (enabled ? "On" : "Off") + "</b>\nWhile dinners are still open it follows up hourly between 09:00 and 21:00, and stops as soon as the week is full.";
+  const header = "⚙️ <b>Settings</b>\n\nWeekly dinner reminder, <b>Sunday 14:00 Europe/Amsterdam</b>: <b>" + (enabled ? "On" : "Off") + "</b>\nWhile dinners are still open it follows up every 3 hours between 09:00 and 21:00, and stops as soon as the week is full.";
   const snoozeLine = enabled && snoozedUntilLabel
     ? "\n\n🔕 <b>Notifications paused</b> until <b>" + escape(snoozedUntilLabel) + "</b>."
     : "";
-  return header + snoozeLine + "\n\nUse /home for the dashboard, /plan for dinners, and /settings here. Type a question or send a recipe link directly.";
+  return header + snoozeLine + "\n\nUse /home for the dashboard, /plan for dinners, and /settings here. Type a question as ordinary text.";
 }
 
 function settingsKeyboard(enabled, snoozedUntilLabel) {
