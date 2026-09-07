@@ -52,7 +52,7 @@ cronAdd(
 // scheduler itself decides whether there is anything worth saying.
 cronAdd(
   "telegram-plan-nudge",
-  String($os.getenv("TELEGRAM_NUDGE_CRON") || "0 9-21 * * *"),
+  String($os.getenv("TELEGRAM_NUDGE_CRON") || "0 9-21/3 * * *"),
   () => {
     try {
       const scheduler = require(`${__hooks}/telegram/scheduler.js`);
