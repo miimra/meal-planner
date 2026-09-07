@@ -472,14 +472,8 @@ function parseOwnDishText(text) {
   return meal ? { date: match[1], meal } : null;
 }
 
-function ingredientLines(ingredients) {
-  return (ingredients || []).map((item) => "• " + escape(String(item).slice(0, 160))).join("\n");
-}
-
-function ownDishSavedText(date, meal, dishName, ingredients) {
-  const head = "✅ <b>" + escape(dishName) + "</b> is planned for " + escape(date + " · " + LABELS[meal]) + ".";
-  if (!ingredients || !ingredients.length) return head;
-  return head + "\n\n🛒 <b>Ingredients</b>\n" + ingredientLines(ingredients);
+function ownDishSavedText(date, meal, dishName) {
+  return "✅ <b>" + escape(dishName) + "</b> is planned for " + escape(date + " · " + LABELS[meal]) + ".";
 }
 
 // Like the own-dish prompt, this force_reply message carries everything the
@@ -624,7 +618,6 @@ module.exports = {
   actionKeyboard,
   backButton,
   feedbackSavedKeyboard,
-  ingredientLines,
   ingredientsPromptText,
   origin,
   originTarget,

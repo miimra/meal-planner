@@ -207,8 +207,8 @@ test("an ingredients reply round trip carries its own dish, date, and meal", () 
   assert.equal(views.parseIngredientsPromptText("What are you cooking for 2026-08-16 · Dinner?"), null);
   assert.deepEqual(views.parseIngredientList("- 500 g lamb\n• 2 onions,  1 tbsp oil \n\n"), ["500 g lamb", "2 onions", "1 tbsp oil"]);
   assert.deepEqual(views.parseIngredientList("   "), []);
-  assert.match(views.ownDishSavedText("2026-08-16", "dinner", "Lasagne", ["500 g beef"]), /🛒 <b>Ingredients<\/b>\n• 500 g beef/);
-  assert.doesNotMatch(views.ownDishSavedText("2026-08-16", "dinner", "Lasagne", []), /Ingredients/);
+  assert.doesNotMatch(views.ownDishSavedText("2026-08-16", "dinner", "Lasagne", ["500 g beef"]), /Ingredients|🛒/);
+  assert.doesNotMatch(views.ownDishSavedText("2026-08-16", "dinner", "Lasagne", []), /Ingredients|🛒/);
 });
 
 test("an own-dish reply round trip carries its own date and meal", () => {

@@ -561,9 +561,9 @@ function askForIngredients(destination, message, date, meal, name, planned) {
   );
 }
 
-function confirmDish(app, destination, message, date, meal, assignment, ingredients) {
+function confirmDish(app, destination, message, date, meal, assignment) {
   const dish = app.findRecordById("dishes", assignment.getString("dish"));
-  sendPanel(destination, views.ownDishSavedText(date, meal, dish.getString("name"), ingredients), views.dayKeyboard(date), message.message_id);
+  sendPanel(destination, views.ownDishSavedText(date, meal, dish.getString("name")), views.dayKeyboard(date), message.message_id);
 }
 
 // A typed-in dish needs its full ingredient list or the shopping list is wrong.
@@ -573,7 +573,7 @@ function planOwnDish(app, destination, message, date, meal, name) {
   const stored = planning.dishByName(app, planning.normalizeDishName(name));
   const known = stored ? json.arrayField(stored, "ingredients") : [];
   if (known.length) {
-    confirmDish(app, destination, message, date, meal, planning.setManualDish(app, date, meal, name), known);
+    confirmDish(app, destination, message, date, meal, planning.setManualDish(app, date, meal, name));
     return "planned own dish for " + date + " " + meal;
   }
   let lookup = null;
@@ -588,7 +588,7 @@ function planOwnDish(app, destination, message, date, meal, name) {
   }
   const assignment = planning.setManualDish(app, date, meal, name, lookup ? lookup.ingredients : []);
   if (lookup) {
-    confirmDish(app, destination, message, date, meal, assignment, lookup.ingredients);
+    confirmDish(app, destination, message, date, meal, assignment);
     return "planned own dish with ingredients for " + date + " " + meal;
   }
   const dish = app.findRecordById("dishes", assignment.getString("dish"));
@@ -626,7 +626,7 @@ function handleIngredientsReply(app, destination, message) {
     const ingredients = views.parseIngredientList(text);
     if (!ingredients.length) throw new Error("ingredients_required");
     const assignment = planning.setManualDish(app, target.date, target.meal, target.name, ingredients);
-    confirmDish(app, destination, message, target.date, target.meal, assignment, ingredients);
+    confirmDish(app, destination, message, target.date, target.meal, assignment);
     message._activityAction = "stored ingredients for " + target.date + " " + target.meal;
   } catch (error) {
     const failure = friendlyError(error);

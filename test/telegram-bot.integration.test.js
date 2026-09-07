@@ -724,7 +724,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.deepEqual(dish.ingredients, ["500 g main ingredient", "1 onion", "2 tbsp olive oil"]);
     const confirmation = mock.telegram.filter((call) => call.method === "sendMessage").at(-1);
     assert.match(confirmation.body.text, /Nan panir sabzi<\/b> is planned/);
-    assert.match(confirmation.body.text, /500 g main ingredient/);
+    assert.doesNotMatch(confirmation.body.text, /500 g main ingredient|Ingredients|🛒/, "the confirmation no longer echoes ingredients back into the chat");
 
     // A reply to anything else must still be treated as an ordinary question.
     await webhook({ update_id: nextUpdate(), message: {
@@ -764,7 +764,7 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     const dish = (await list("dishes")).find((item) => item.id === assignment.dish);
     assert.equal(dish.name, "Unknown grandma casserole");
     assert.deepEqual(dish.ingredients, ["1 kg potatoes", "300 g cheese", "2 onions"]);
-    assert.match(mock.telegram.filter((call) => call.method === "sendMessage").at(-1).body.text, /1 kg potatoes/);
+    assert.doesNotMatch(mock.telegram.filter((call) => call.method === "sendMessage").at(-1).body.text, /1 kg potatoes|Ingredients|🛒/, "the confirmation no longer echoes ingredients back into the chat");
   });
 
   await t.test("a plan update from the weekly message returns to the weekly message", async () => {
