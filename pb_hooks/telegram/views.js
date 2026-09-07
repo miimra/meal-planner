@@ -195,7 +195,8 @@ function weekKeyboard(code) {
 function nudgeText(week, fromDate) {
   const open = actionableDinners(week, fromDate);
   const days = open.map((day) => weekdayLabel(day.date)).join(", ");
-  return "⬜ <b>" + open.length + " dinner" + (open.length === 1 ? "" : "s") + " still open</b>\n" + escape(days) + "\n\nTap a day to pick something.";
+  const count = open.length === 1 ? "one dinner" : open.length + " dinners";
+  return "👋 Still need a plan for <b>" + count + "</b>: " + escape(days) + ".\n\nTap a day and let's sort it.";
 }
 
 function mealsText() {

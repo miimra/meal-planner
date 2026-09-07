@@ -118,9 +118,16 @@ test("the nudge names the open days and nothing else", () => {
     { dish: { name: "G" }, status: "planned" },
   ]);
   const text = views.nudgeText(value);
-  assert.match(text, /2 dinners still open/);
+  assert.doesNotMatch(text, /^⬜.*still open</, "the flat status-line wording is retired");
   assert.match(text, /Tue, Thu/);
+  assert.match(text, /2 dinners/i);
   assert.doesNotMatch(text, /Lemon|Mon|Wed/);
+
+  const one = views.nudgeText(week("2026-08-17", [
+    { dish: { name: "A" }, status: "planned" },
+    {},
+  ]));
+  assert.doesNotMatch(one, /1 dinners/i, "singular phrasing reads naturally for exactly one open dinner");
 });
 
 test("settings shows no snooze controls while the weekly reminder is off", () => {
