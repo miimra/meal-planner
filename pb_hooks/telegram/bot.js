@@ -11,8 +11,6 @@ const security = require(`${__hooks}/telegram/security.js`);
 const snoozeDurations = require(`${__hooks}/telegram/snooze.js`);
 const state = require(`${__hooks}/telegram/state.js`);
 const views = require(`${__hooks}/telegram/views.js`);
-const recipeImports = require(`${__hooks}/recipe_import/service.js`);
-const recipeUrls = require(`${__hooks}/recipe_import/url.js`);
 const json = require(`${__hooks}/shared/json.js`);
 
 const BOT_COMMANDS = [
@@ -41,8 +39,6 @@ function friendlyError(error) {
   if (code === "meal_not_planned") return "That meal has no planned dish to rate.";
   if (code === "dish_name_required") return "Send the dish name as plain text and I’ll plan it.";
   if (code === "ingredients_required") return "Reply with the ingredients, one per line.";
-  if (code === "recipe_import_category_required") return "Choose a household category before saving this recipe.";
-  if (code.indexOf("recipe_import_") === 0) return "This recipe card is no longer available for that action.";
   if (code.indexOf("openrouter") === 0 || code === "invalid_ai_response") return "I couldn’t do that right now. Please try again later.";
   return null;
 }
@@ -293,74 +289,7 @@ function handleNavigation(app, destination, message, parts) {
     const view = weeklyPlanView(app, calendar.planningWeekStart(today), "Dinners for the week");
     return editPanel(destination, message, view.text, view.keyboard);
   }
-  if (parts[1] === "saved") {
-    const dishes = app.findRecordsByFilter("dishes", "lifecycle = 'want_to_try'", "name", 0, 0);
-    return editPanel(destination, message, views.savedRecipesText(dishes), { inline_keyboard: [[{ text: "‹ More", callback_data: "nav:more" }, { text: "🏠 Home", callback_data: "nav:home" }]] });
-  }
   return null;
-}
-
-function importView(app, destination, message, record) {
-  const status = record.getString("status");
-  if (status === "saved" && record.getString("dish")) {
-    return editPanel(destination, message, views.recipeImportAlreadySavedText(app.findRecordById("dishes", record.getString("dish"))), { inline_keyboard: [[{ text: "🔖 Want to try", callback_data: "nav:saved" }, { text: "🏠 Home", callback_data: "nav:home" }]] });
-  }
-  if (status === "ready") {
-    const extracted = recipeImports.recipe(record);
-    return editPanel(destination, message, views.recipeImportPreviewText(extracted, record.getString("platform"), record.getFloat("confidence")), views.recipeImportKeyboard(record, extracted));
-  }
-  if (status === "needs_input" || status === "failed") {
-    return editPanel(destination, message, views.recipeImportNeedsInputText(record.getString("platform"), record.getString("error")), views.recipeImportNeedsInputKeyboard(record));
-  }
-  if (status === "cancelled") return editPanel(destination, message, views.recipeImportCancelledText(), { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] });
-  return editPanel(destination, message, views.recipeImportAnalyzingText(record.getString("platform")), { inline_keyboard: [] });
-}
-
-function handleRecipeCallback(app, destination, query, parts) {
-  if (parts.length < 3) return false;
-  const record = app.findRecordById("recipe_imports", parts[2]);
-  recipeImports.ensureMessage(record, destination, query.message);
-  if (parts[1] === "view") {
-    importView(app, destination, query.message, record);
-    return true;
-  }
-  if (parts[1] === "cats") {
-    if (record.getString("status") !== "ready") throw new Error("recipe_import_not_ready");
-    const categories = app.findRecordsByFilter("categories", "", "catId", 0, 0);
-    editPanel(destination, query.message, "🧭 <b>Choose the main category</b>\n\nThis controls which dinner rotation dates can suggest the recipe.", views.recipeCategoryKeyboard(record, categories));
-    return true;
-  }
-  if (parts[1] === "details") {
-    if (record.getString("status") !== "ready") throw new Error("recipe_import_not_ready");
-    editPanel(destination, query.message, views.recipeImportDetailsText(recipeImports.recipe(record), json.arrayField(record, "missing_fields")), { inline_keyboard: [
-      [{ text: "‹ Recipe", callback_data: "ri:view:" + record.id }, { text: "🧭 Change category", callback_data: "ri:cats:" + record.id }],
-      [{ text: "✖ Cancel", callback_data: "ri:cancel:" + record.id }, { text: "🏠 Home", callback_data: "nav:home" }],
-    ] });
-    return true;
-  }
-  if (parts[1] === "cat" && parts[3]) {
-    recipeImports.setCategory(app, record, parts[3]);
-    importView(app, destination, query.message, app.findRecordById("recipe_imports", record.id));
-    return true;
-  }
-  if (parts[1] === "save") {
-    const dish = recipeImports.save(app, record);
-    editPanel(destination, query.message, views.recipeImportSavedText(dish), { inline_keyboard: [[{ text: "🔖 Want to try", callback_data: "nav:saved" }, { text: "🏠 Home", callback_data: "nav:home" }]] });
-    return true;
-  }
-  if (parts[1] === "cancel") {
-    recipeImports.cancel(app, record);
-    importView(app, destination, query.message, app.findRecordById("recipe_imports", record.id));
-    return true;
-  }
-  if (parts[1] === "retry") {
-    if (record.getString("status") === "saved" || record.getString("status") === "cancelled") throw new Error("recipe_import_not_retryable");
-    editPanel(destination, query.message, views.recipeImportAnalyzingText(record.getString("platform")), { inline_keyboard: [] });
-    recipeImports.analyze(app, record);
-    importView(app, destination, query.message, app.findRecordById("recipe_imports", record.id));
-    return true;
-  }
-  return false;
 }
 
 function handleCallback(app, user, destination, query) {
@@ -370,13 +299,6 @@ function handleCallback(app, user, destination, query) {
       handleNavigation(app, destination, query.message, parts);
       client.answerCallback(query.id, "", false);
       return true;
-    }
-    if (parts[0] === "ri") {
-      const handled = handleRecipeCallback(app, destination, query, parts);
-      let notice = parts[1] === "save" ? "Recipe saved" : parts[1] === "cancel" ? "Import cancelled" : "";
-      if (handled && parts[1] === "cancel" && app.findRecordById("recipe_imports", parts[2]).getString("status") === "saved") notice = "Recipe was already saved";
-      if (handled) client.answerCallback(query.id, notice, false);
-      return handled;
     }
     if (parts[0] === "set" && parts[1] === "daily") {
       const enabled = parts[2] === "on";
@@ -652,26 +574,6 @@ function handleQuestion(app, destination, message) {
   return true;
 }
 
-function handleRecipeLink(app, user, destination, message) {
-  const text = commands.questionText(message, destination.getString("type"), commands.botUsername());
-  if (text === null || !/https?:\/\//i.test(text)) return false;
-  let rawUrl;
-  try {
-    rawUrl = recipeUrls.extractFirstUrl(text);
-  } catch (_) {
-    sendPanel(destination, "I can only import a safe public HTTP or HTTPS recipe link.", { inline_keyboard: [[{ text: "🏠 Home", callback_data: "nav:home" }]] }, message.message_id);
-    message._activityAction = "rejected unsafe recipe link";
-    return true;
-  }
-  if (!rawUrl) return false;
-  const platform = recipeUrls.platform(rawUrl);
-  const response = sendPanel(destination, views.recipeImportAnalyzingText(platform), { inline_keyboard: [] }, message.message_id);
-  const record = recipeImports.create(app, rawUrl, user, destination, response.message_id);
-  if (record.getString("status") !== "saved") recipeImports.analyze(app, record);
-  importView(app, destination, { message_id: response.message_id }, app.findRecordById("recipe_imports", record.id));
-  return true;
-}
-
 function handle(app, update) {
   if (!update || typeof update.update_id === "undefined") return;
   const kind = security.updateKind(update);
@@ -696,7 +598,6 @@ function handle(app, update) {
         ? handleCommand(app, user, destination, update.message, parsed)
         : (handleOwnDish(app, destination, update.message)
           || handleIngredientsReply(app, destination, update.message)
-          || handleRecipeLink(app, user, destination, update.message)
           || handleQuestion(app, destination, update.message));
     }
     finishUpdate(app, updateRecord, handled ? "processed" : "ignored");
@@ -713,7 +614,6 @@ module.exports = {
   BOT_COMMANDS,
   handle,
   handlePhoto,
-  handleRecipeLink,
   helpText,
   registerCommands,
   editHome,

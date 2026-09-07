@@ -15,7 +15,7 @@ open the combined weekly plan instead of a separate Meals hub or read-only
 week screen.
 
 Every inline panel edits the Telegram message that contains it. Commands,
-typed replies, recipe links, and feedback photos create new response messages.
+typed replies, and feedback photos create new response messages.
 
 ## Compact menu tree
 
@@ -26,7 +26,6 @@ flowchart TD
   week["🗓 Week · N dinners open<br/>/plan · nav:planweek"]
   feedback["⭐ Rate today<br/>only when today's dish exists"]
   more["••• More<br/>nav:more"]
-  saved["🔖 Saved recipes"]
   dates["📆 Choose another date"]
   settings["🔔 Weekly reminder<br/>/settings"]
   action["✏️ Plan one dinner"]
@@ -43,7 +42,6 @@ flowchart TD
   home -. when available .-> feedback
   home --> more
   week -->|tap any present/future day| action
-  more --> saved
   more --> dates --> action
   more --> settings
   action --> suggestion
@@ -62,8 +60,8 @@ the former Meals hub, separate read-only Full week screen, and Change a meal
 detour from the normal path.
 
 Questions are not menu items. In a private chat, ordinary text is answered. In
-a group, mention the bot or reply to one of its messages. A public recipe URL
-starts recipe analysis. A photo can attach to the current feedback flow.
+a group, mention the bot or reply to one of its messages. A photo can attach
+to the current feedback flow.
 
 ## Planning origins and Back
 

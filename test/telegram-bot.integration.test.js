@@ -47,9 +47,6 @@ async function startMockServer() {
   const ingredientRequests = [];
   const assistantRequests = [];
   const photoRequests = [];
-  const recipeRequests = [];
-  const youtubeRequests = [];
-  let recipeCategoryMode = "valid";
   let messageId = 100;
   let mealSequence = 0;
   let imageSequence = 0;
@@ -84,24 +81,6 @@ async function startMockServer() {
         response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ meals }) } }] }));
         return;
       }
-      if (user.source && Array.isArray(user.allowedCategories)) {
-        recipeRequests.push(user);
-        response.writeHead(200, { "Content-Type": "application/json" });
-        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
-          recipe: {
-            name: "Saved YouTube lentil soup",
-            description: "A simple vegetable-forward lentil soup.",
-            ingredients: ["250 g lentils", "2 carrots", "1 onion", "1 litre water"],
-            instructions: ["Chop the vegetables.", "Simmer everything until tender."],
-            prepMinutes: 10, cookMinutes: 30, totalMinutes: 40, servings: 4,
-            difficulty: "easy", cuisine: "Mediterranean", mealTypes: ["dinner"],
-            category: recipeCategoryMode === "invalid" ? "Not a household category" : user.allowedCategories[0], tags: ["lentils"], babyServing: "Blend a salt-free portion.", imageUrl: null,
-          },
-          confidence: 0.91,
-          missingFields: [],
-        }) } }] }));
-        return;
-      }
       if (user.dishName) {
         ingredientRequests.push(user);
         const known = !/unknown/i.test(user.dishName);
@@ -116,17 +95,6 @@ async function startMockServer() {
       const answer = user.deterministicDraft || "The stored household context suggests a simple answer <without HTML>.";
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(JSON.stringify({ choices: [{ message: { content: answer } }] }));
-      return;
-    }
-
-    if (request.url && request.url.startsWith("/youtube/videos?")) {
-      youtubeRequests.push(request.url);
-      response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ items: [{
-        id: "abc123xyz99",
-        snippet: { title: "Lentil soup recipe", description: "Ingredients and method are explained in this cooking video.", thumbnails: { high: { url: "https://i.ytimg.com/example.jpg" } } },
-        contentDetails: { duration: "PT4M" },
-      }] }));
       return;
     }
 
@@ -215,9 +183,6 @@ async function startMockServer() {
     assistantRequests,
     photoRequests,
     failNextPhoto() { failPhotos += 2; },
-    recipeRequests,
-    youtubeRequests,
-    setRecipeCategoryMode(value) { recipeCategoryMode = value; },
     close: () => new Promise((resolve) => server.close(resolve)),
   };
 }
@@ -273,8 +238,6 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     TELEGRAM_BOT_TOKEN: BOT_TOKEN,
     TELEGRAM_BOT_USERNAME: "moghassemi_family_assistant_bot",
     TELEGRAM_WEBHOOK_SECRET: SECRET,
-    YOUTUBE_API_KEY: "test-youtube-key",
-    YOUTUBE_API_BASE_URL: mock.baseUrl + "/youtube",
     WIKIPEDIA_API_BASE_URL: mock.baseUrl + "/wikipedia",
     OPENVERSE_API_BASE_URL: mock.baseUrl + "/openverse",
   };
@@ -434,70 +397,29 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.equal(mock.assistantRequests.at(-1).household.nextFourteenDays.length, 14);
   });
 
-  await t.test("recipe links create a message-scoped preview and only Save creates a want-to-try dish", async () => {
+  await t.test("a recipe link is answered as an ordinary question instead of triggering an import", async () => {
     const dishesBefore = (await list("dishes")).length;
     const sendsBefore = mock.telegram.filter((call) => call.method === "sendMessage").length;
     await webhook({ update_id: nextUpdate(), message: { message_id: 91, from: { id: 111 }, chat: groupChat, text: "https://youtu.be/abc123xyz99" } });
     assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBefore, "unmentioned group links stay ignored");
 
+    const assistantRequestsBefore = mock.assistantRequests.length;
     await webhook({ update_id: nextUpdate(), message: { message_id: 92, from: { id: 111 }, chat: privateChat, text: "Try https://youtu.be/abc123xyz99?si=share" } });
-    assert.equal(mock.youtubeRequests.length, 1);
-    assert.equal(mock.recipeRequests.length, 1);
-    assert.equal((await list("dishes")).length, dishesBefore, "preview must not create a dish");
-    const importRecord = (await list("recipe_imports")).find((item) => item.canonical_url.includes("abc123xyz99"));
-    assert.equal(importRecord.status, "ready");
-    const analysisSend = mock.telegram.filter((call) => call.method === "sendMessage").at(-1);
-    assert.deepEqual(analysisSend.body.reply_parameters, { message_id: 92 });
-    assert.equal(String(analysisSend.result.message_id), importRecord.response_message_id);
-    const preview = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
-    assert.equal(preview.body.message_id, analysisSend.result.message_id);
-    assert.match(preview.body.text, /Recipe found/);
-    assert.match(JSON.stringify(preview.body.reply_markup), /Save to want to try/);
-
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "save-import", from: { id: 111 }, data: `ri:save:${importRecord.id}`, message: { message_id: analysisSend.result.message_id, chat: privateChat } } });
-    const saved = (await list("dishes")).find((item) => item.name === "Saved YouTube lentil soup");
-    assert.ok(saved);
-    assert.equal(saved.lifecycle, "want_to_try");
-    assert.equal(saved.source_platform, "youtube");
-    assert.equal((await list("recipe_imports")).find((item) => item.id === importRecord.id).status, "saved");
-    const saveEdit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
-    assert.equal(saveEdit.body.message_id, analysisSend.result.message_id);
-    assert.match(saveEdit.body.text, /Saved to want to try/);
-
-    const sendsAfter = mock.telegram.filter((call) => call.method === "sendMessage").length;
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "saved-list", from: { id: 111 }, data: "nav:saved", message: { message_id: analysisSend.result.message_id, chat: privateChat } } });
-    assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsAfter);
-    assert.match(mock.telegram.filter((call) => call.method === "editMessageText").at(-1).body.text, /Saved YouTube lentil soup/);
+    assert.equal(mock.assistantRequests.length, assistantRequestsBefore + 1, "a link is just ordinary question text now");
+    assert.equal((await list("dishes")).length, dishesBefore, "no dish is ever created from a link");
+    const answer = mock.telegram.filter((call) => call.method === "sendMessage").at(-1);
+    assert.deepEqual(answer.body.reply_parameters, { message_id: 92 });
+    assert.doesNotMatch(answer.body.text, /Recipe found|Analyzing/);
   });
 
-  await t.test("recipe details, category confirmation, cancel, and repeated links remain message-scoped", async () => {
-    mock.setRecipeCategoryMode("invalid");
-    const dishesBefore = (await list("dishes")).length;
-    await webhook({ update_id: nextUpdate(), message: { message_id: 93, from: { id: 111 }, chat: privateChat, text: "https://youtu.be/repeat98765" } });
-    const firstRecord = (await list("recipe_imports")).filter((item) => item.canonical_url.includes("repeat98765")).at(-1);
-    const firstMessageId = Number(firstRecord.response_message_id);
-    let preview = mock.telegram.filter((call) => call.method === "editMessageText" && call.body.message_id === firstMessageId).at(-1);
-    assert.match(JSON.stringify(preview.body.reply_markup), /Choose category to continue/);
-    assert.doesNotMatch(JSON.stringify(preview.body.reply_markup), /Save to want to try/);
-
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "details-import", from: { id: 111 }, data: `ri:details:${firstRecord.id}`, message: { message_id: firstMessageId, chat: privateChat } } });
-    assert.match(mock.telegram.filter((call) => call.method === "editMessageText").at(-1).body.text, /Instructions/);
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "categories-import", from: { id: 111 }, data: `ri:cats:${firstRecord.id}`, message: { message_id: firstMessageId, chat: privateChat } } });
-    const categoryPanel = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
-    const categoryButton = categoryPanel.body.reply_markup.inline_keyboard.flat().find((item) => String(item.callback_data || "").startsWith(`ri:cat:${firstRecord.id}:`));
-    assert.ok(categoryButton);
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "category-import", from: { id: 111 }, data: categoryButton.callback_data, message: { message_id: firstMessageId, chat: privateChat } } });
-    preview = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
-    assert.match(JSON.stringify(preview.body.reply_markup), /Save to want to try/);
-
-    await webhook({ update_id: nextUpdate(), message: { message_id: 94, from: { id: 111 }, chat: privateChat, text: "https://youtu.be/repeat98765?si=again" } });
-    const repeated = (await list("recipe_imports")).filter((item) => item.canonical_url.includes("repeat98765"));
-    assert.equal(repeated.length, 2);
-    assert.notEqual(repeated[0].response_message_id, repeated[1].response_message_id);
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "cancel-import", from: { id: 111 }, data: `ri:cancel:${repeated[1].id}`, message: { message_id: Number(repeated[1].response_message_id), chat: privateChat } } });
-    assert.equal((await list("recipe_imports")).find((item) => item.id === repeated[1].id).status, "cancelled");
-    assert.equal((await list("dishes")).length, dishesBefore);
-    mock.setRecipeCategoryMode("valid");
+  await t.test("a stale ri:* callback from an old message is a safe no-op", async () => {
+    const sendsBefore = mock.telegram.filter((call) => call.method === "sendMessage").length;
+    const editsBefore = mock.telegram.filter((call) => call.method === "editMessageText").length;
+    const answersBefore = mock.telegram.filter((call) => call.method === "answerCallbackQuery").length;
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "stale-ri", from: { id: 111 }, data: "ri:save:doesnotexist", message: { message_id: 95, chat: privateChat } } });
+    assert.equal(mock.telegram.filter((call) => call.method === "sendMessage").length, sendsBefore);
+    assert.equal(mock.telegram.filter((call) => call.method === "editMessageText").length, editsBefore);
+    assert.equal(mock.telegram.filter((call) => call.method === "answerCallbackQuery").length, answersBefore, "an unrecognized callback is never acknowledged as handled");
   });
 
   await t.test("settings enables the weekly reminder destination without exposing old slash commands", async () => {

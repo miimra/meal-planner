@@ -175,7 +175,7 @@ test("home and More expose the compact menu without question or settings detours
   assert.match(changedHome, /1 dinner open/);
 
   const more = JSON.stringify(views.moreKeyboard());
-  assert.match(more, /nav:saved/);
+  assert.doesNotMatch(more, /nav:saved/, "the recipe-import Saved-recipes screen is gone");
   assert.match(more, /nav:change/);
   assert.match(more, /nav:settings/);
 });
