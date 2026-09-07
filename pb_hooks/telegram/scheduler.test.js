@@ -34,6 +34,7 @@ function makeRecordFrom(collection, seed) {
   const store = Object.assign({ id: "r" + (++idSeq) }, seed);
   return {
     id: store.id,
+    get: (field) => store[field],
     getString: (field) => String(store[field] ?? ""),
     getBool: (field) => Boolean(store[field]),
     set: (field, value) => { store[field] = value; },
@@ -93,6 +94,11 @@ function withDeliveryLookups(app) {
       matches.sort((a, b) => (a._store.target_date < b._store.target_date ? 1 : -1));
       return matches.slice(0, 1);
     }
+    if (collection === "telegram_delivery_runs" && filter === "chat = {:chat} && target_date = {:date} && kind = 'weekly' && status = 'sent'") {
+      return app._tables.telegram_delivery_runs.filter((row) => (
+        row._store.chat === params.chat && row._store.target_date === params.date && row._store.kind === "weekly" && row._store.status === "sent"
+      ));
+    }
     return original(collection, filter, sort, limit, offset, params);
   };
   return app;
@@ -101,6 +107,7 @@ function withDeliveryLookups(app) {
 const botPath = require.resolve(path.join(__dirname, "bot.js"));
 const sentWeekly = [];
 const sentNudges = [];
+const pinnedWeeklies = [];
 require.cache[botPath] = {
   id: botPath,
   filename: botPath,
@@ -108,6 +115,7 @@ require.cache[botPath] = {
   exports: {
     sendWeeklyPlan: (app, chat, weekStart) => { sentWeekly.push({ chat: chat.id, weekStart }); return { message_id: 1 }; },
     sendNudge: (app, chat, weekStart) => { sentNudges.push({ chat: chat.id, weekStart }); return { message_id: 2 }; },
+    pinWeeklyPlan: (app, chat, weekStart, messageId) => { pinnedWeeklies.push({ chat: chat.id, weekStart, messageId }); },
   },
 };
 
@@ -142,6 +150,24 @@ test("sendWeekly behaves exactly as before for an unsnoozed chat", () => {
   assert.equal(sentWeekly[0].chat, chat.id);
   const run = app._tables.telegram_delivery_runs.find((row) => row._store.chat === chat.id);
   assert.equal(run._store.status, "sent");
+});
+
+test("sendWeekly pins immediately when the week is already fully decided", () => {
+  const app = withDeliveryLookups(makeApp());
+  const chat = app.addChat({});
+  const planning = require(`${__hooks}/meal_planning/service.js`);
+  const original = planning.weekValue;
+  planning.weekValue = () => ({ start: "2026-08-17", end: "2026-08-23", days: [] }); // no open dinners
+  sentWeekly.length = 0;
+  pinnedWeeklies.length = 0;
+
+  scheduler.sendWeekly(app);
+
+  assert.equal(sentWeekly.length, 1, "the weekly message is still sent as usual");
+  assert.equal(pinnedWeeklies.length, 1);
+  assert.equal(pinnedWeeklies[0].chat, chat.id);
+  assert.equal(pinnedWeeklies[0].messageId, "1");
+  planning.weekValue = original;
 });
 
 test("an expired or empty snooze does not suppress sendWeekly", () => {
@@ -231,4 +257,104 @@ test("catch-up never pre-empts the Sunday cron: on Sunday it waits for the 14:00
 
   assert.equal(result.skipped, "no_announced_week");
   assert.equal(sentWeekly.length, 0);
+});
+
+function sentWeeklyDelivery(app, chat, weekStart, overrides) {
+  const delivery = makeRecordFrom(makeCollection("telegram_delivery_runs"), Object.assign({
+    chat: chat.id, target_date: weekStart, kind: "weekly", status: "sent", message_ids: ["555"],
+  }, overrides || {}));
+  app._tables.telegram_delivery_runs.push(delivery);
+  return delivery;
+}
+
+test("finalizeWeek pins the weekly message once every dinner is decided", () => {
+  now = Date.parse("2026-08-19T10:00:00.000Z");
+  const app = withDeliveryLookups(makeApp());
+  const chat = app.addChat({});
+  const weekStart = "2026-08-17";
+  const delivery = sentWeeklyDelivery(app, chat, weekStart);
+  const planning = require(`${__hooks}/meal_planning/service.js`);
+  const original = planning.weekValue;
+  planning.weekValue = () => ({ start: weekStart, end: "2026-08-23", days: [] }); // no open dinners
+  pinnedWeeklies.length = 0;
+
+  const result = scheduler.finalizeWeek(app, weekStart);
+
+  assert.equal(result.pinned, 1);
+  assert.equal(pinnedWeeklies.length, 1);
+  assert.deepEqual(pinnedWeeklies[0], { chat: chat.id, weekStart, messageId: "555" });
+  assert.equal(delivery.getBool("pinned"), true);
+  planning.weekValue = original;
+});
+
+test("finalizeWeek does not re-pin a delivery already marked pinned", () => {
+  now = Date.parse("2026-08-19T10:00:00.000Z");
+  const app = withDeliveryLookups(makeApp());
+  const chat = app.addChat({});
+  const weekStart = "2026-08-17";
+  sentWeeklyDelivery(app, chat, weekStart, { pinned: true });
+  const planning = require(`${__hooks}/meal_planning/service.js`);
+  const original = planning.weekValue;
+  planning.weekValue = () => ({ start: weekStart, end: "2026-08-23", days: [] });
+  pinnedWeeklies.length = 0;
+
+  const result = scheduler.finalizeWeek(app, weekStart);
+
+  assert.equal(result.pinned, 0);
+  assert.equal(pinnedWeeklies.length, 0);
+  planning.weekValue = original;
+});
+
+test("finalizeWeek skips a snoozed chat and leaves it for later", () => {
+  now = Date.parse("2026-08-19T10:00:00.000Z");
+  const app = withDeliveryLookups(makeApp());
+  const future = new Date(now + 60 * 60 * 1000).toISOString();
+  const chat = app.addChat({ snoozed_until: future });
+  const weekStart = "2026-08-17";
+  sentWeeklyDelivery(app, chat, weekStart);
+  const planning = require(`${__hooks}/meal_planning/service.js`);
+  const original = planning.weekValue;
+  planning.weekValue = () => ({ start: weekStart, end: "2026-08-23", days: [] });
+  pinnedWeeklies.length = 0;
+
+  const result = scheduler.finalizeWeek(app, weekStart);
+
+  assert.equal(result.pinned, 0);
+  assert.equal(pinnedWeeklies.length, 0);
+  planning.weekValue = original;
+});
+
+test("finalizeWeek does nothing while dinners remain open", () => {
+  now = Date.parse("2026-08-19T10:00:00.000Z");
+  const app = withDeliveryLookups(makeApp());
+  const chat = app.addChat({});
+  const weekStart = "2026-08-17";
+  sentWeeklyDelivery(app, chat, weekStart);
+  pinnedWeeklies.length = 0; // the fake app's default findRecordsByFilter leaves every dinner unplanned, i.e. open
+
+  const result = scheduler.finalizeWeek(app, weekStart);
+
+  assert.equal(result.pinned, 0);
+  assert.equal(pinnedWeeklies.length, 0);
+});
+
+test("finalizing one chat's week pins only that chat, never another's", () => {
+  now = Date.parse("2026-08-19T10:00:00.000Z");
+  const app = withDeliveryLookups(makeApp());
+  const weekStart = "2026-08-17";
+  const finishedChat = app.addChat({});
+  const untouchedChat = app.addChat({});
+  sentWeeklyDelivery(app, finishedChat, weekStart);
+  // untouchedChat has no delivery run at all for this week, e.g. it just subscribed.
+  const planning = require(`${__hooks}/meal_planning/service.js`);
+  const original = planning.weekValue;
+  planning.weekValue = () => ({ start: weekStart, end: "2026-08-23", days: [] });
+  pinnedWeeklies.length = 0;
+
+  const result = scheduler.finalizeWeek(app, weekStart);
+
+  assert.equal(result.pinned, 1);
+  assert.equal(pinnedWeeklies.length, 1);
+  assert.equal(pinnedWeeklies[0].chat, finishedChat.id);
+  planning.weekValue = original;
 });

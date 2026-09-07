@@ -111,6 +111,21 @@ function editMessageRichPhoto(chatId, messageId, photo, text, replyMarkup) {
   return multipartRequest("editMessageText", fields, "suggestion", photo);
 }
 
+function pinChatMessage(chatId, messageId, silent) {
+  return request("pinChatMessage", {
+    chat_id: String(chatId),
+    message_id: Number(messageId),
+    disable_notification: silent !== false,
+  });
+}
+
+function unpinChatMessage(chatId, messageId) {
+  return request("unpinChatMessage", {
+    chat_id: String(chatId),
+    message_id: Number(messageId),
+  });
+}
+
 function answerCallback(id, text, alert) {
   return request("answerCallbackQuery", {
     callback_query_id: String(id),
@@ -147,7 +162,9 @@ module.exports = {
   editMessageMedia,
   editMessageRichPhoto,
   editMessageText,
+  pinChatMessage,
   request,
   sendMessage,
   setCommands,
+  unpinChatMessage,
 };

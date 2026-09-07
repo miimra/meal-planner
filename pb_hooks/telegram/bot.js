@@ -126,6 +126,24 @@ function sendWeeklyPlan(app, destination, weekStart) {
   return sendPanel(destination, view.text, view.keyboard);
 }
 
+// Once every dinner is decided, the weekly-plan message is edited to drop its
+// buttons and pinned as a frozen record, instead of staying a live panel.
+// Any previously pinned weekly message in the same chat is unpinned first,
+// so at most one is ever pinned at a time.
+function pinWeeklyPlan(app, destination, weekStart, messageId) {
+  const view = weeklyPlanView(app, weekStart, "Dinners for the week");
+  client.editMessageText(chatId(destination), messageId, view.text, { inline_keyboard: [] });
+  const previous = destination.getString("pinned_message_id");
+  if (previous && previous !== String(messageId)) {
+    try { client.unpinChatMessage(chatId(destination), previous); } catch (error) {
+      app.logger().warn("Telegram weekly plan unpin failed", "chat_record", destination.id, "error_code", safeCode(error));
+    }
+  }
+  client.pinChatMessage(chatId(destination), messageId, true);
+  destination.set("pinned_message_id", String(messageId));
+  app.save(destination);
+}
+
 function sendNudge(app, destination, weekStart) {
   const view = weeklyPlanView(app, weekStart, "Dinners for the week");
   return sendPanel(destination, views.nudgeText(view.week, planning.today()), view.keyboard);
@@ -618,6 +636,7 @@ module.exports = {
   registerCommands,
   editHome,
   editPanel,
+  pinWeeklyPlan,
   sendNudge,
   sendWeeklyPlan,
   sendHome,
