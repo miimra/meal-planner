@@ -5,6 +5,7 @@ const planning = require(`${__hooks}/meal_planning/service.js`);
 const views = require(`${__hooks}/telegram/views.js`);
 const bot = require(`${__hooks}/telegram/bot.js`);
 const state = require(`${__hooks}/telegram/state.js`);
+const json = require(`${__hooks}/shared/json.js`);
 
 const NUDGE_DELAY_MS = 60 * 60 * 1000;
 
@@ -68,7 +69,42 @@ function sendWeekly(app) {
     if (!delivery) continue;
     if (deliver(app, chat, delivery, () => bot.sendWeeklyPlan(app, chat, weekStart), "Telegram weekly plan failed")) sent += 1;
   }
+  finalizeWeek(app, weekStart);
   return { chats: chats.length, sent, weekStart, snoozed };
+}
+
+// Once a week's dinners are all decided, its weekly-plan message is pinned
+// with its buttons removed instead of staying a live, editable panel. Each
+// chat is finalized independently and only once (a delivery run already
+// marked "pinned" is left alone), so a snoozed chat is skipped for now and
+// picked up once it resumes, and one chat's pin never touches another's.
+function finalizeWeek(app, weekStart) {
+  const open = views.actionableDinners(planning.weekValue(app, weekStart), planning.today());
+  if (open.length) return { pinned: 0 };
+
+  const chats = activeChats(app);
+  let pinned = 0;
+  for (const chat of chats) {
+    if (state.isSnoozed(chat)) continue;
+    const delivery = first(
+      app,
+      "telegram_delivery_runs",
+      "chat = {:chat} && target_date = {:date} && kind = 'weekly' && status = 'sent'",
+      { chat: chat.id, date: weekStart },
+    );
+    if (!delivery || delivery.getBool("pinned")) continue;
+    const messageIds = json.arrayField(delivery, "message_ids");
+    if (!messageIds.length) continue;
+    try {
+      bot.pinWeeklyPlan(app, chat, weekStart, messageIds[0]);
+      delivery.set("pinned", true);
+      app.save(delivery);
+      pinned += 1;
+    } catch (error) {
+      app.logger().error("Telegram weekly plan pin failed", "chat_record", chat.id, "error_code", safeCode(error));
+    }
+  }
+  return { pinned };
 }
 
 // A cross-Sunday snooze leaves no "weekly" delivery run for the week it swallowed,
@@ -121,7 +157,10 @@ function sendNudges(app) {
 
   const weekStart = announced.getString("target_date");
   const open = views.actionableDinners(planning.weekValue(app, weekStart), planning.today());
-  if (!open.length) return { skipped: "week_complete", weekStart };
+  if (!open.length) {
+    finalizeWeek(app, weekStart);
+    return { skipped: "week_complete", weekStart };
+  }
 
   const chats = activeChats(app);
   let sent = 0;
@@ -138,4 +177,4 @@ function sendNudges(app) {
   return { chats: chats.length, sent, weekStart, open: open.length, snoozed };
 }
 
-module.exports = { sendNudges, sendWeekly };
+module.exports = { finalizeWeek, sendNudges, sendWeekly };

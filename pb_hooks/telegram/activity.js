@@ -63,10 +63,6 @@ function callbackAction(data) {
   if (parts[0] === "fb" && parts[1] === "date") return "opened feedback for " + clean(parts[2], 20);
   if (parts[0] === "fb" && parts[1] === "meal") return "selected feedback meal " + clean(parts[2] + " " + parts[3], 80);
   if (parts[0] === "fa") return "saved " + clean(parts[1], 30) + " meal feedback";
-  if (parts[0] === "ri") {
-    const labels = { view: "opened recipe preview", cats: "opened recipe categories", details: "opened recipe details", cat: "selected recipe category", save: "saved recipe to want to try", cancel: "cancelled recipe import", retry: "retried recipe import" };
-    return labels[parts[1]] || "used recipe import action";
-  }
   return "handled button action";
 }
 
@@ -82,7 +78,6 @@ function action(update, handled) {
   if (/^\/settings(?:@\S+)?(?:\s|$)/i.test(text)) return "sent settings";
   if (/^\/ask(?:@\S+)?\s+\S/i.test(text)) return "answered household question";
   if (/^\/ask(?:@\S+)?(?:\s|$)/i.test(text)) return "sent ask instructions";
-  if (/https?:\/\//i.test(text)) return "analyzed recipe link";
   return "answered household question";
 }
 

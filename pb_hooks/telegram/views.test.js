@@ -11,6 +11,14 @@ function slot(meal, overrides) {
   return Object.assign({ meal, status: "unplanned", dish: null, category: null, categoryOptions: [] }, overrides || {});
 }
 
+function fakeSuggestion(fields) {
+  return {
+    get: (name) => fields[name],
+    getString: (name) => String(fields[name] || ""),
+    getInt: (name) => Number(fields[name] || 0),
+  };
+}
+
 test("meal change views show the existing choice, dinner category, and neutral leftovers action", () => {
   const dinner = slot("dinner", {
     status: "planned",
@@ -110,9 +118,16 @@ test("the nudge names the open days and nothing else", () => {
     { dish: { name: "G" }, status: "planned" },
   ]);
   const text = views.nudgeText(value);
-  assert.match(text, /2 dinners still open/);
+  assert.doesNotMatch(text, /^⬜.*still open</, "the flat status-line wording is retired");
   assert.match(text, /Tue, Thu/);
+  assert.match(text, /2 dinners/i);
   assert.doesNotMatch(text, /Lemon|Mon|Wed/);
+
+  const one = views.nudgeText(week("2026-08-17", [
+    { dish: { name: "A" }, status: "planned" },
+    {},
+  ]));
+  assert.doesNotMatch(one, /1 dinners/i, "singular phrasing reads naturally for exactly one open dinner");
 });
 
 test("settings shows no snooze controls while the weekly reminder is off", () => {
@@ -121,6 +136,13 @@ test("settings shows no snooze controls while the weekly reminder is off", () =>
   const buttons = JSON.stringify(views.settingsKeyboard(false));
   assert.match(buttons, /"set:daily:on"/);
   assert.doesNotMatch(buttons, /set:snooze/);
+});
+
+test("settings describes the current every-3-hours nudge cadence and no longer invites a recipe link", () => {
+  const text = views.settingsText(true);
+  assert.match(text, /every 3 hours/);
+  assert.doesNotMatch(text, /hourly/);
+  assert.doesNotMatch(text, /recipe link/i);
 });
 
 test("settings offers three snooze durations when the reminder is on and not snoozed", () => {
@@ -160,7 +182,7 @@ test("home and More expose the compact menu without question or settings detours
   assert.match(changedHome, /1 dinner open/);
 
   const more = JSON.stringify(views.moreKeyboard());
-  assert.match(more, /nav:saved/);
+  assert.doesNotMatch(more, /nav:saved/, "the recipe-import Saved-recipes screen is gone");
   assert.match(more, /nav:change/);
   assert.match(more, /nav:settings/);
 });
@@ -204,11 +226,28 @@ test("an ingredients reply round trip carries its own dish, date, and meal", () 
     meal: "dinner",
   });
   assert.match(views.ingredientsPromptText("2026-08-16", "dinner", "Lasagne", true), /could not look its ingredients up/);
+  assert.doesNotMatch(views.ingredientsPromptText("2026-08-16", "dinner", "Lasagne", true), /shopping list/i);
+  assert.doesNotMatch(prompt, /shopping list/i);
   assert.equal(views.parseIngredientsPromptText("What are you cooking for 2026-08-16 · Dinner?"), null);
   assert.deepEqual(views.parseIngredientList("- 500 g lamb\n• 2 onions,  1 tbsp oil \n\n"), ["500 g lamb", "2 onions", "1 tbsp oil"]);
   assert.deepEqual(views.parseIngredientList("   "), []);
-  assert.match(views.ownDishSavedText("2026-08-16", "dinner", "Lasagne", ["500 g beef"]), /🛒 <b>Ingredients<\/b>\n• 500 g beef/);
-  assert.doesNotMatch(views.ownDishSavedText("2026-08-16", "dinner", "Lasagne", []), /Ingredients/);
+  assert.doesNotMatch(views.ownDishSavedText("2026-08-16", "dinner", "Lasagne", ["500 g beef"]), /Ingredients|🛒/);
+  assert.doesNotMatch(views.ownDishSavedText("2026-08-16", "dinner", "Lasagne", []), /Ingredients|🛒/);
+});
+
+test("suggestion details never echo an ingredients list back into the chat", () => {
+  const suggestion = fakeSuggestion({
+    date: "2026-08-16",
+    suggested_name: "Lemon salmon",
+    difficulty: "easy",
+    prep_minutes: 10,
+    cook_minutes: 20,
+    ingredients: ["500 g salmon", "1 lemon"],
+  });
+  const details = views.suggestionDetails(suggestion, slot("dinner"));
+  assert.doesNotMatch(details, /Ingredients|🛒|500 g salmon/);
+  assert.match(details, /Lemon salmon/);
+  assert.match(details, /Difficulty: <b>easy<\/b>/);
 });
 
 test("an own-dish reply round trip carries its own date and meal", () => {
