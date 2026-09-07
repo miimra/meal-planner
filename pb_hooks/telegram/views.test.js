@@ -212,6 +212,8 @@ test("an ingredients reply round trip carries its own dish, date, and meal", () 
     meal: "dinner",
   });
   assert.match(views.ingredientsPromptText("2026-08-16", "dinner", "Lasagne", true), /could not look its ingredients up/);
+  assert.doesNotMatch(views.ingredientsPromptText("2026-08-16", "dinner", "Lasagne", true), /shopping list/i);
+  assert.doesNotMatch(prompt, /shopping list/i);
   assert.equal(views.parseIngredientsPromptText("What are you cooking for 2026-08-16 · Dinner?"), null);
   assert.deepEqual(views.parseIngredientList("- 500 g lamb\n• 2 onions,  1 tbsp oil \n\n"), ["500 g lamb", "2 onions", "1 tbsp oil"]);
   assert.deepEqual(views.parseIngredientList("   "), []);

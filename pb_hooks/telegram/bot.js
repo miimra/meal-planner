@@ -40,7 +40,7 @@ function friendlyError(error) {
   if (code === "invalid_dinner_category") return "That category does not belong to this dinner date.";
   if (code === "meal_not_planned") return "That meal has no planned dish to rate.";
   if (code === "dish_name_required") return "Send the dish name as plain text and I’ll plan it.";
-  if (code === "ingredients_required") return "Reply with the ingredients, one per line, so I can build the shopping list.";
+  if (code === "ingredients_required") return "Reply with the ingredients, one per line.";
   if (code === "recipe_import_category_required") return "Choose a household category before saving this recipe.";
   if (code.indexOf("recipe_import_") === 0) return "This recipe card is no longer available for that action.";
   if (code.indexOf("openrouter") === 0 || code === "invalid_ai_response") return "I couldn’t do that right now. Please try again later.";
@@ -566,7 +566,7 @@ function confirmDish(app, destination, message, date, meal, assignment) {
   sendPanel(destination, views.ownDishSavedText(date, meal, dish.getString("name")), views.dayKeyboard(date), message.message_id);
 }
 
-// A typed-in dish needs its full ingredient list or the shopping list is wrong.
+// A typed-in dish needs its full ingredient list on file for later recommendations.
 // Stored dishes already have one; for the rest the model is asked, and a dish it
 // does not recognise is not planned at all until the cook supplies the list.
 function planOwnDish(app, destination, message, date, meal, name) {

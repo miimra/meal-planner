@@ -482,8 +482,8 @@ const INGREDIENTS_PROMPT = /Ingredients for (.+) · (\d{4}-\d{2}-\d{2}) · (Brea
 function ingredientsPromptText(date, meal, dishName, planned) {
   const head = "🛒 Ingredients for " + escape(dishName) + " · " + date + " · " + LABELS[meal] + "?";
   const body = planned
-    ? "It is planned, but I could not look its ingredients up just now. Reply with them, one per line, so the shopping list stays right."
-    : "I do not know this dish, so I cannot build the shopping list for it. Reply with its ingredients, one per line — or open /plan and choose something else. Nothing is planned yet.";
+    ? "It is planned, but I could not look its ingredients up just now. Reply with them, one per line, so I have them on file."
+    : "I do not know this dish. Reply with its ingredients, one per line — or open /plan and choose something else. Nothing is planned yet.";
   return head + "\n\n" + body;
 }
 
