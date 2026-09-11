@@ -15,10 +15,20 @@ test("calendar week is always Monday through Sunday", () => {
   assert.deepEqual(calendar.weekBounds("2026-08-16"), { start: "2026-08-10", end: "2026-08-16" });
 });
 
-test("dinner rotation preserves weekday, Saturday, and Sunday semantics", () => {
-  assert.deepEqual(calendar.dinnerRotation("2026-08-12"), { kind: "category", rotationWeek: 1, catId: 6 });
+test("dinner rotation follows the two-week table, with Saturday out and Sunday a fixed theme", () => {
+  // 2026-08-10 opens rotation week 1; 2026-08-17 opens week 2.
+  assert.deepEqual(calendar.dinnerRotation("2026-08-10"), { kind: "category", rotationWeek: 1, catId: 12 });
+  assert.deepEqual(calendar.dinnerRotation("2026-08-12"), { kind: "category", rotationWeek: 1, catId: 7 });
   assert.equal(calendar.dinnerRotation("2026-08-15").kind, "eat_out");
-  assert.deepEqual(calendar.dinnerRotation("2026-08-16").catIds, [2, 3]);
+  assert.deepEqual(calendar.dinnerRotation("2026-08-16"), { kind: "category", rotationWeek: 1, catId: 3 });
+  assert.deepEqual(calendar.dinnerRotation("2026-08-17"), { kind: "category", rotationWeek: 2, catId: 5 });
+  assert.deepEqual(calendar.dinnerRotation("2026-08-21"), { kind: "category", rotationWeek: 2, catId: 4 });
+  assert.equal(calendar.dinnerRotation("2026-08-22").kind, "eat_out");
+  assert.deepEqual(calendar.dinnerRotation("2026-08-23"), { kind: "category", rotationWeek: 2, catId: 1 });
+  const weekOne = ["2026-08-10", "2026-08-11", "2026-08-12", "2026-08-13", "2026-08-14", "2026-08-16"].map((date) => calendar.dinnerRotation(date).catId);
+  const weekTwo = ["2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20", "2026-08-21", "2026-08-23"].map((date) => calendar.dinnerRotation(date).catId);
+  assert.deepEqual(weekOne, [12, 10, 7, 6, 2, 3]);
+  assert.deepEqual(weekTwo, [5, 11, 8, 9, 4, 1]);
 });
 
 test("dinner is the only planned meal and always feeds the baby", () => {

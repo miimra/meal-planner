@@ -83,7 +83,7 @@ function messages(context, meals, preferences, excludedPreferences) {
         "Use little added salt and sugar; prefer herbs, lemon, and naturally flavorful ingredients.",
         "The supplied dinnerCategory is the highest-priority planning theme and the dinner must clearly belong to it.",
         "Use the dinnerCategory notes, effort, and effortMinutes as real selection constraints, not merely display labels.",
-        "When dinnerCategory is Flexible Choice, there is no cuisine or format restriction; prefer a high-ranked liked dish or saved untried recipe.",
+        "The dinnerCategory notes list example dishes for that theme; suggest one of them, a stored candidate, or a dish that clearly fits the same theme.",
         "Never blend in a conflicting food type merely to satisfy a user preference.",
         "Breakfast and lunch have no category and must be very simple: easy difficulty, no more than 20 total minutes, and no more than 8 ingredients.",
         "Avoid dishes listed in plannedThisWeek.",

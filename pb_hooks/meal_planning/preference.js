@@ -7,17 +7,18 @@ const MODIFIERS = [
 ];
 
 const CATEGORY_TERMS = {
-  1: ["egg", "eggs", "omelet", "omelette", "sausage", "potato", "bandari", "kuku", "falafel"],
-  2: ["grill", "grilled", "kebab", "kabob", "chicken", "meat", "beef", "lamb", "joojeh"],
-  3: ["stew", "khoresh", "meat", "beef", "lamb", "chicken", "fesenjan", "heavy"],
-  4: ["rice", "polo", "pilaf", "dami", "tahchin", "chicken", "meat", "vegetable"],
-  5: ["chicken", "meat", "beef", "lamb", "curry", "teriyaki", "stroganoff", "tofu", "vegetarian", "tray bake", "stir fry"],
+  1: ["egg", "eggs", "omelet", "omelette", "sausage", "potato", "bandari", "kuku", "falafel", "pan", "tomato", "eggplant"],
+  2: ["grill", "grilled", "kebab", "kabob", "kabab", "chicken", "meat", "beef", "lamb", "joojeh", "koobideh"],
+  3: ["stew", "khoresh", "khoresht", "meat", "beef", "lamb", "chicken", "fesenjan", "fesenjoon", "ghormeh", "gheymeh", "heavy"],
+  4: ["rice", "polo", "pilaf", "dami", "tahchin", "chicken", "meat", "vegetable", "lentil", "bean"],
+  5: ["chicken", "roast", "roasted", "tray bake", "vegetable", "vegetables", "potato", "rice", "curry", "teriyaki", "souvlaki", "butter chicken"],
   6: ["fish", "seafood", "sea food", "shrimp", "salmon", "tuna", "cod", "prawn"],
-  7: ["pasta", "noodle", "noodles", "macaroni", "lasagna", "spaghetti"],
-  8: ["burger", "hamburger", "sushi", "pizza", "wrap", "taco", "sandwich"],
-  9: ["pastry", "baked", "samosa", "cutlet", "kotlet", "piroski", "patty", "pie"],
-  10: ["salad", "bowl", "plate", "potato", "macaroni", "olivieh", "grain", "lentil"],
-  11: ["cold", "lentil", "lentils", "abdoogh", "soup", "no cook", "simple"],
+  7: ["pasta", "noodle", "noodles", "macaroni", "lasagna", "spaghetti", "penne"],
+  8: ["wrap", "wraps", "sandwich", "burger", "hamburger", "taco", "shawarma", "tortilla", "pita"],
+  9: ["oven", "baked", "bake", "casserole", "gratin", "pastry", "samosa", "cutlet", "kotlet", "piroski", "patty", "pie", "one dish", "one-dish"],
+  10: ["salad", "cold", "plate", "bowl", "potato", "macaroni", "olivieh", "grain", "lentil", "tuna", "sushi"],
+  11: ["soup", "ash", "aash", "lentil", "lentils", "barley", "abdoogh", "broth"],
+  12: ["pizza", "calzone", "flatbread"],
 };
 
 function normalized(value) {
@@ -35,7 +36,6 @@ function foodTerms(value) {
 function matchesDinnerCategory(value, category, dishes) {
   const request = normalized(value);
   if (!request || !foodTerms(request).length) return true;
-  if (Number(category && category.catId) === 12) return true;
   const terms = CATEGORY_TERMS[Number(category && category.catId)] || [];
   if (terms.some((term) => request.indexOf(term) !== -1)) return true;
   const names = [category && category.name, category && category.nameFa];

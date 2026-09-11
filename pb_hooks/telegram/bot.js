@@ -34,8 +34,6 @@ function friendlyError(error) {
   const code = safeCode(error);
   if (code === "planning_date_passed") return "That planning button is for an earlier date. Open /plan to choose today or a future date.";
   if (code === "suggestion_not_pending") return "That suggestion is no longer active. Open the current meal plan to make a new choice.";
-  if (code === "dinner_category_required") return "Choose the dinner category first.";
-  if (code === "invalid_dinner_category") return "That category does not belong to this dinner date.";
   if (code === "meal_not_planned") return "That meal has no planned dish to rate.";
   if (code === "dish_name_required") return "Send the dish name as plain text and I’ll plan it.";
   if (code === "ingredients_required") return "Reply with the ingredients, one per line.";
@@ -360,14 +358,6 @@ function handleCallback(app, user, destination, query) {
       client.answerCallback(query.id, "", false);
       return true;
     }
-    if (parts[0] === "pick" && parts[1] === "cat" && parts.length >= 5) {
-      assertPlanningDate(parts[2]);
-      if (parts[3] !== "dinner") throw new Error("invalid_dinner_category");
-      planning.selectDinnerCategory(app, parts[2], parts[4]);
-      editAction(app, destination, query.message, parts[2], parts[3], views.origin(parts[5]));
-      client.answerCallback(query.id, "", false);
-      return true;
-    }
     if (parts[0] === "do" && parts.length >= 4) {
       assertPlanningDate(parts[2]);
       const code = views.origin(parts[4]);
@@ -376,8 +366,6 @@ function handleCallback(app, user, destination, query) {
         editPanel(destination, query.message, views.notCookingText(parts[2], parts[3]), views.notCookingKeyboard(parts[2], parts[3], code));
         client.answerCallback(query.id, "", false);
       } else if (parts[1] === "suggest") {
-        const slot = planning.slotValue(app, parts[2], parts[3]);
-        if (parts[3] === "dinner" && slot.categoryOptions.length > 1 && !slot.category) throw new Error("dinner_category_required");
         const suggestion = planning.generateSuggestions(app, parts[2], [parts[3]])[0];
         showSuggestion(app, destination, query.message, suggestion, false, code);
         client.answerCallback(query.id, "Suggestion ready", false);

@@ -92,8 +92,8 @@ The first panel contains only frequent choices:
 ```
 
 `Not cooking…` opens `Buy food`, `Eat out`, and `Skip`, plus a Back button to
-the first action panel. Sunday still requires choosing one of its two rotation
-categories before Suggest becomes available.
+the first action panel. Every dinner date has exactly one rotation category,
+so Suggest is always available from the action panel.
 
 Suggestion cards keep the existing flow: **Use this**, **Another**,
 **Details**, **Change**, Back, and Home. A typed dish uses a force-reply prompt;

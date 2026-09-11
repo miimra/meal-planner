@@ -59,9 +59,6 @@ function slotLine(slot) {
     : title + " — <i>" + escape(STATUS[slot.status] || STATUS.unplanned) + "</i>";
   if (slot.meal !== "dinner") return value;
   if (slot.category) return value + "\n   🧭 " + escape(slot.category.emoji + " " + slot.category.name);
-  if (slot.categoryOptions && slot.categoryOptions.length) {
-    return value + "\n   🧭 Choose: " + slot.categoryOptions.map((category) => escape(category.emoji + " " + category.name)).join(" or ");
-  }
   return value;
 }
 
@@ -146,9 +143,6 @@ function actionableDinners(week, fromDate) {
 
 function dinnerCategoryLine(slot) {
   if (slot.category) return "\n      🧭 " + escape(slot.category.emoji + " " + slot.category.name);
-  if (slot.categoryOptions && slot.categoryOptions.length) {
-    return "\n      🧭 " + slot.categoryOptions.map((category) => escape(category.emoji + " " + category.name)).join(" or ");
-  }
   return "";
 }
 
@@ -272,9 +266,7 @@ function actionText(date, meal, slot) {
   ];
   if (meal === "dinner") {
     if (slot.category) lines.push("Category: <b>" + escape(slot.category.emoji + " " + slot.category.name) + "</b>");
-    else if (slot.categoryOptions && slot.categoryOptions.length) {
-      lines.push("Category: <b>choose " + slot.categoryOptions.map((category) => escape(category.emoji + " " + category.name)).join(" or ") + "</b>");
-    } else lines.push("Category: <b>no category · eat-out day</b>");
+    else lines.push("Category: <b>no category · eat-out day</b>");
   }
   lines.push("", "The plan changes only when you choose an option or accept a suggestion.");
   return lines.join("\n");
@@ -291,16 +283,6 @@ function actionBack(date, code) {
 function actionKeyboard(date, meal, slot, code) {
   const slotData = date + ":" + meal;
   const rows = [];
-  if (meal === "dinner" && slot.categoryOptions && slot.categoryOptions.length > 1) {
-    rows.push(slot.categoryOptions.map((category) => ({
-      text: (slot.category && slot.category.catId === category.catId ? "✅ " : "") + category.emoji + " " + category.name,
-      callback_data: withOrigin("pick:cat:" + slotData + ":" + category.catId, code),
-    })));
-    if (!slot.category) {
-      rows.push([actionBack(date, code), homeButton()]);
-      return { inline_keyboard: rows };
-    }
-  }
   rows.push(
     [{ text: "✨ Suggest", callback_data: withOrigin("do:suggest:" + slotData, code) }, { text: "✍️ Enter a dish", callback_data: withOrigin("do:own:" + slotData, code) }],
     [{ text: "🥡 Leftovers", callback_data: withOrigin("do:leftovers:" + slotData, code) }, { text: "••• Not cooking…", callback_data: withOrigin("do:notcooking:" + slotData, code) }],
@@ -407,11 +389,7 @@ function askText(botUsername) {
 }
 
 function suggestionCaption(suggestion, slot, selected) {
-  const category = slot.category
-    ? "\n🧭 " + escape(slot.category.emoji + " " + slot.category.name)
-    : slot.categoryOptions && slot.categoryOptions.length
-      ? "\n🧭 " + slot.categoryOptions.map((item) => escape(item.emoji + " " + item.name)).join(" or ")
-      : "";
+  const category = slot.category ? "\n🧭 " + escape(slot.category.emoji + " " + slot.category.name) : "";
   return [
     ICONS[slot.meal] + " <b>" + escape(suggestion.getString("date")) + " · " + LABELS[slot.meal] + "</b>" + (selected ? " · ✅ Selected" : "") + category,
     "",

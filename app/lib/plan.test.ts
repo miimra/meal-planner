@@ -15,22 +15,25 @@ const categories: Category[] = [{
 }];
 
 test("buildDay covers dinner only, and fills its rotation category", () => {
-  const day = buildDay("2026-08-12", categories, [], []);
+  // Thursday 2026-08-13 sits in rotation week 1: Seafood.
+  const day = buildDay("2026-08-13", categories, [], []);
   assert.deepEqual(Object.keys(day.meals), ["dinner"]);
   assert.equal(day.meals.dinner.category?.catId, 6);
   assert.equal(day.meals.dinner.dish, null);
   assert.equal(day.meals.dinner.status, "unplanned");
 });
 
-test("buildDay exposes both Sunday dinner category choices", () => {
+test("buildDay gives Sunday its fixed rotation category and Saturday none", () => {
   const sundayCategories: Category[] = [
     ...categories,
     { ...categories[0], pbId: "grill-record", catId: 2, name_en: "Iranian Grills", name_fa: "کباب‌های ایرانی", emoji: "🍢" },
     { ...categories[0], pbId: "stew-record", catId: 3, name_en: "Iranian Stews & Slow Dishes", name_fa: "خورشت و غذای آرام‌پز ایرانی", emoji: "🍲" },
   ];
-  const day = buildDay("2026-08-16", sundayCategories, [], []);
-  assert.equal(day.meals.dinner.category, null);
-  assert.deepEqual(day.meals.dinner.categoryOptions.map((item) => item.catId), [2, 3]);
+  // Sunday 2026-08-16 closes rotation week 1 (Iranian Stew); Saturday before it eats out.
+  assert.equal(buildDay("2026-08-16", sundayCategories, [], []).meals.dinner.category?.catId, 3);
+  const saturday = buildDay("2026-08-15", sundayCategories, [], []).meals.dinner;
+  assert.equal(saturday.category, null);
+  assert.equal(saturday.status, "eating_out");
 });
 
 test("buildDay exposes exact assignments and special statuses", () => {

@@ -8,7 +8,7 @@ global.__hooks = path.resolve(__dirname, "..");
 const views = require("./views.js");
 
 function slot(meal, overrides) {
-  return Object.assign({ meal, status: "unplanned", dish: null, category: null, categoryOptions: [] }, overrides || {});
+  return Object.assign({ meal, status: "unplanned", dish: null, category: null }, overrides || {});
 }
 
 function fakeSuggestion(fields) {
@@ -24,7 +24,6 @@ test("meal change views show the existing choice, dinner category, and neutral l
     status: "planned",
     dish: { name: "Lemon salmon" },
     category: { catId: 6, emoji: "🐟", name: "Seafood" },
-    categoryOptions: [{ catId: 6, emoji: "🐟", name: "Seafood" }],
   });
   assert.match(views.actionText("2026-08-12", "dinner", dinner), /Current: <b>Lemon salmon<\/b>/);
   assert.match(views.actionText("2026-08-12", "dinner", dinner), /Category: <b>🐟 Seafood<\/b>/);
@@ -34,17 +33,14 @@ test("meal change views show the existing choice, dinner category, and neutral l
   assert.match(views.slotLine(slot("lunch", { status: "leftovers" })), /Left over/);
 });
 
-test("Sunday category choices are explicit and block suggestions until one is selected", () => {
-  const options = [
-    { catId: 2, emoji: "🍢", name: "Iranian Grills" },
-    { catId: 3, emoji: "🍲", name: "Iranian Stews & Slow Dishes" },
-  ];
-  const unselected = slot("dinner", { categoryOptions: options });
-  assert.match(views.actionText("2026-08-16", "dinner", unselected), /choose 🍢 Iranian Grills or 🍲 Iranian Stews &amp; Slow Dishes/);
-  assert.doesNotMatch(JSON.stringify(views.actionKeyboard("2026-08-16", "dinner", unselected)), /do:suggest/);
+test("every dinner date offers Suggest straight away; eat-out days say so", () => {
+  const sunday = slot("dinner", { category: { catId: 3, emoji: "🍲", name: "Iranian Stew" } });
+  assert.match(views.actionText("2026-08-16", "dinner", sunday), /Category: <b>🍲 Iranian Stew<\/b>/);
+  assert.match(JSON.stringify(views.actionKeyboard("2026-08-16", "dinner", sunday)), /do:suggest/);
+  assert.doesNotMatch(JSON.stringify(views.actionKeyboard("2026-08-16", "dinner", sunday)), /pick:cat/);
 
-  const selected = Object.assign({}, unselected, { category: options[0] });
-  assert.match(JSON.stringify(views.actionKeyboard("2026-08-16", "dinner", selected)), /do:suggest/);
+  const saturday = slot("dinner", { status: "eating_out" });
+  assert.match(views.actionText("2026-08-15", "dinner", saturday), /no category · eat-out day/);
 });
 
 function week(start, dinners) {
@@ -66,17 +62,14 @@ test("the weekly plan lists every dinner and lets future settled days be changed
     {},
     { status: "eating_out" },
     {},
-    { categoryOptions: [
-      { catId: 2, emoji: "🍢", name: "Iranian Grills" },
-      { catId: 3, emoji: "🍲", name: "Iranian Stews & Slow Dishes" },
-    ] },
+    { category: { catId: 1, emoji: "🍳", name: "Simple Pan Meals" } },
   ]);
   const text = views.weeklyPlanText(value, "Dinners for the week");
   assert.match(text, /2026-08-17 → 2026-08-23/);
   assert.match(text, /✅ <b>Mon<\/b> Lemon salmon/);
   assert.match(text, /⬜ <b>Tue<\/b>/);
   assert.match(text, /✅ <b>Wed<\/b>/);
-  assert.match(text, /🍢 Iranian Grills or 🍲 Iranian Stews &amp; Slow Dishes/);
+  assert.match(text, /🍳 Simple Pan Meals/);
   assert.match(text, /<b>4 dinners still open\.<\/b>/);
 
   const keyboard = views.weeklyPlanKeyboard(value);
@@ -188,7 +181,7 @@ test("home and More expose the compact menu without question or settings detours
 });
 
 test("back always returns to the screen the panel was opened from", () => {
-  const dinner = slot("dinner", { categoryOptions: [{ catId: 6, emoji: "🐟", name: "Seafood" }], category: { catId: 6, emoji: "🐟", name: "Seafood" } });
+  const dinner = slot("dinner", { category: { catId: 6, emoji: "🐟", name: "Seafood" } });
   function back(keyboard) {
     return keyboard.inline_keyboard.at(-1)[0];
   }
