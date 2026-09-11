@@ -7,8 +7,6 @@ const preference = require(`${__hooks}/meal_planning/preference.js`);
 const prompt = require(`${__hooks}/openrouter/prompt.js`);
 const recommendation = require(`${__hooks}/meal_planning/recommendation.js`);
 
-const FLEXIBLE_CATEGORY_ID = 12;
-
 function first(app, collection, filter, params, sort) {
   const records = app.findRecordsByFilter(collection, filter, sort || "", 1, 0, params || {});
   return records.length ? records[0] : null;
@@ -104,18 +102,6 @@ function categoryValue(record) {
   } : null;
 }
 
-function dinnerCategoryOptions(app, date) {
-  const rotation = calendar.dinnerRotation(date);
-  if (rotation.kind === "category") {
-    const category = categoryByCatId(app, rotation.catId);
-    return category ? [categoryValue(category)] : [];
-  }
-  if (rotation.kind === "choice") {
-    return rotation.catIds.map((catId) => categoryByCatId(app, catId)).filter(Boolean).map(categoryValue);
-  }
-  return [];
-}
-
 function dishValue(record) {
   return record ? { id: record.id, name: record.getString("name") } : null;
 }
@@ -132,7 +118,6 @@ function slotValue(app, date, meal) {
     status,
     selectionSource: assignment ? assignment.getString("selection_source") || null : null,
     category: categoryValue(category),
-    categoryOptions: meal === "dinner" ? dinnerCategoryOptions(app, date) : [],
     dish: dishValue(dish),
     assignmentId: assignment ? assignment.id : null,
   };
@@ -228,10 +213,7 @@ function aiContext(app, targetDate, meals) {
   for (const meal of meals) {
     requested[meal] = slotValue(app, targetDate, meal);
     servings[meal] = calendar.servingProfile(targetDate, meal);
-    const rotation = meal === "dinner" ? calendar.dinnerRotation(targetDate) : null;
-    const categoryIds = requested[meal].category
-      ? (requested[meal].category.catId === FLEXIBLE_CATEGORY_ID ? [] : [requested[meal].category.catId])
-      : (rotation && rotation.kind === "choice" ? rotation.catIds : []);
+    const categoryIds = requested[meal].category ? [requested[meal].category.catId] : [];
     const ranking = { meal, assignedDishIds, categoryIds, feedback, occurrences, targetDate };
     // Anything already shown for this exact slot, plus everything suggested for
     // this meal in the past fortnight: without this the model keeps returning
@@ -456,31 +438,6 @@ function setSpecialStatus(app, date, meal, status) {
   return assignment;
 }
 
-function selectDinnerCategory(app, date, catId) {
-  calendar.parseDate(date);
-  const wanted = Number(catId);
-  const rotation = calendar.dinnerRotation(date);
-  const allowed = rotation.kind === "category"
-    ? [rotation.catId]
-    : rotation.kind === "choice" ? rotation.catIds : [];
-  if (allowed.indexOf(wanted) === -1) throw new Error("invalid_dinner_category");
-  const category = categoryByCatId(app, wanted);
-  if (!category) throw new Error("invalid_dinner_category");
-
-  const assignment = upsertAssignment(app, date, "dinner");
-  const changed = Boolean(assignment.id) && assignment.getString("category") !== category.id;
-  assignment.set("date", date);
-  assignment.set("meal", "dinner");
-  assignment.set("category", category.id);
-  if (changed) {
-    assignment.set("dish", null);
-    assignment.set("status", "unplanned");
-  }
-  assignment.set("selection_source", "telegram");
-  app.save(assignment);
-  return assignment;
-}
-
 function ensureOccurrence(app, date, meal) {
   let occurrence = first(app, "cooked_occurrences", "date = {:date} && meal = {:meal}", { date, meal });
   const assignment = assignmentFor(app, date, meal);
@@ -529,7 +486,6 @@ module.exports = {
   localTimestamp,
   localWeekdayTime,
   saveFeedback,
-  selectDinnerCategory,
   setManualDish,
   setSpecialStatus,
   slotValue,

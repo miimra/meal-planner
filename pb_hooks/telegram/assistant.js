@@ -15,9 +15,7 @@ function slotFact(app, date, meal) {
     meal,
     status: slot.status,
     dish: slot.dish ? slot.dish.name : null,
-    dinnerCategory: slot.category
-      ? slot.category.emoji + " " + slot.category.name
-      : slot.categoryOptions.length ? slot.categoryOptions.map((category) => category.emoji + " " + category.name).join(" or ") : null,
+    dinnerCategory: slot.category ? slot.category.emoji + " " + slot.category.name : null,
   };
 }
 

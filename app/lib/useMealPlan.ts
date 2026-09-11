@@ -5,7 +5,7 @@ import { pb } from "./pb.ts";
 import type { Category } from "./categories.ts";
 import type { AssignmentRecord, PlanDish } from "./plan.ts";
 
-interface CategoryRecord {
+export interface CategoryRecord {
   id: string;
   catId: number;
   name_en: string;
@@ -25,7 +25,7 @@ interface DishRecord {
   name: string;
 }
 
-function mapCategoryRecord(record: CategoryRecord): Category {
+export function mapCategoryRecord(record: CategoryRecord): Category {
   return {
     pbId: record.id,
     catId: record.catId,

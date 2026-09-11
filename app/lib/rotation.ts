@@ -50,39 +50,33 @@ export function rotationWeekOf(date: Date): RotationWeek {
 }
 
 // ── The plan ─────────────────────────────────────────────────────────────────
-// Category id for each weekday, per rotation week. `null` = special handling
-// (weekend). See README "The 2-Week Rotation". This table only knows catIds —
-// it has no dependency on where/how category content is loaded.
+// Category id for each day Monday → Sunday, per rotation week. `null` is
+// Saturday, always eating out. See docs/meal-categories.md; the bot's
+// calendar.js encodes the same tables. This table only knows catIds — it has
+// no dependency on where/how category content is loaded.
 
-const WEEK_1: (number | null)[] = [5, 1, 6, 4, 7, null, null];
-const WEEK_2: (number | null)[] = [12, 11, 10, 9, 8, null, null];
+const WEEK_1: (number | null)[] = [12, 10, 7, 6, 2, null, 3];
+const WEEK_2: (number | null)[] = [5, 11, 8, 9, 4, null, 1];
 
-export type DayKind = "weekday" | "eat-out" | "sunday-choice";
+export type DayKind = "weekday" | "eat-out";
 
 export interface PlanDay {
   day: DayIndex;
   dayName: string;
   week: RotationWeek;
   kind: DayKind;
-  /** Resolved category id for weekdays. Undefined for weekends. */
+  /** Resolved category id for cooking days. Undefined for eat-out days. */
   categoryId?: number;
-  /** Sunday offers a choice between these two category ids. */
-  choiceIds?: number[];
 }
 
 /** Resolve the plan for a specific weekday index within a rotation week. */
 export function planForDay(week: RotationWeek, day: DayIndex): PlanDay {
   const dayName = DAY_NAMES[day];
-
-  if (day === 5) {
+  const table = week === 1 ? WEEK_1 : WEEK_2;
+  const catId = table[day];
+  if (catId === null) {
     return { day, dayName, week, kind: "eat-out" };
   }
-  if (day === 6) {
-    return { day, dayName, week, kind: "sunday-choice", choiceIds: [2, 3] };
-  }
-
-  const table = week === 1 ? WEEK_1 : WEEK_2;
-  const catId = table[day]!;
   return { day, dayName, week, kind: "weekday", categoryId: catId };
 }
 
@@ -119,10 +113,7 @@ export interface PlanLabel {
 
 /** Resolve a PlanDay into what to show, given the currently-loaded categories. */
 export function planLabel(plan: PlanDay, categories: Category[]): PlanLabel {
-  if (plan.kind === "eat-out") return { emoji: "🍴", title: "Eating out" };
-  if (plan.kind === "sunday-choice") {
-    return { emoji: "🍢", title: "Your pick", fa: "کبابی یا خورشت" };
-  }
+  if (plan.kind === "eat-out") return { emoji: "🍴", title: "Eating out", fa: "بیرون غذا می‌خوریم" };
   const category =
     plan.categoryId !== undefined ? findCategory(categories, plan.categoryId) : undefined;
   return {

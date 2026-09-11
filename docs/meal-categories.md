@@ -1,51 +1,80 @@
 # Dinner category reference
 
 This is the canonical, Git-tracked reference for the household dinner
-taxonomy introduced on 2026-08-25. PocketBase stores the active copies, while
+taxonomy introduced on 2026-09-11. PocketBase stores the active copies, while
 the stable `catId` values below are referenced by the two-week rotation and
 must not be reassigned casually.
 
 Categories are broad planning themes, not mutually exclusive recipe folders.
 A dish may belong to more than one category; `catId` remains its primary
 category for compatibility, and the `categories` relation holds every
-eligible theme.
+eligible theme. The `notes` field carries example dishes and is shown to the
+household on the web app's Categories page and given to the model as a
+selection constraint.
 
-| ID | Emoji | English | Persian | Style | Effort | Intent |
+| ID | Emoji | English | Persian | Style | Effort | Examples |
 | ---: | :---: | --- | --- | --- | --- | --- |
-| 1 | 🍳 | Quick Iranian | غذای سریع ایرانی | Iranian | Quick, 15–35 min | Eggs, kuku, falafel, bandari, and other low-effort Iranian dinners. |
-| 2 | 🍢 | Iranian Grills | کباب‌های ایرانی | Iranian | Medium, 30–60 min | Kebabs, joojeh, and other Iranian grilled mains. Weekend only. |
-| 3 | 🍲 | Iranian Stews & Slow Dishes | خورشت و غذای آرام‌پز ایرانی | Iranian | Heavy, 60–150 min | Khoresh and other longer-cooking Iranian weekend dishes. Prep ahead when useful. |
-| 4 | 🍚 | Iranian Rice & Dami | پلو و دمی ایرانی | Iranian | Medium–heavy, 40–90 min | Polo, dami, tahchin, and one-pot or layered rice dishes. |
-| 5 | 🌍 | International Mains | غذای اصلی بین‌المللی | International | Medium, 25–55 min | International chicken, meat, vegetarian, curry, tray-bake, and stir-fry mains. |
-| 6 | 🐟 | Seafood | ماهی و غذاهای دریایی | Either | Medium, 20–50 min | Fish or shellfish as the main protein; pasta and rice preparations are allowed. |
-| 7 | 🍝 | Pasta & Noodles | پاستا و نودل | International | Quick, 20–45 min | Pasta or noodles as the main format, with vegetables or a substantial side. |
-| 8 | 🍔 | Casual Favorites | غذاهای خودمانی و محبوب | Either | Medium, 20–60 min | Burgers, sushi, pizza, wraps, tacos, and similar relaxed family dinners, homemade or bought. |
-| 9 | 🥟 | Handheld & Oven Meals | غذای دستی و تنوری | Either | Medium, 25–60 min | Savory pastries, samosas, patties, baked dishes, and other handheld or oven-friendly meals. |
-| 10 | 🥗 | Salads & Light Plates | سالاد و بشقاب سبک | Either | Quick, 15–35 min | Complete lighter dinners built around vegetables plus a satisfying protein or grain. |
-| 11 | 🥣 | Simple Soups & No-Cook | سوپ و غذای ساده | Either | Quick, 10–35 min | Soups, lentils, no-cook plates, and other genuinely simple dinners. |
-| 12 | ✨ | Flexible Choice | انتخاب آزاد | Either | Medium, 10–90 min | No cuisine or format restriction; prefer a liked family dish or an untried saved recipe. |
+| 1 | 🍳 | Simple Pan Meals | غذای ساده تابه‌ای | Iranian | Quick, 15–35 min | Omelette, tomato omelette, kuku sabzi, kuku sibzamini, bandari, frozen falafel with tomato, tomato-eggplant-potato skillet. |
+| 2 | 🍢 | Kebab & Grill | کباب و گریل | Iranian | Medium, 30–60 min | Joojeh kabab, joojeh sikhi, chelo kabab koobideh, kabab torsh, grilled chicken thighs. |
+| 3 | 🍲 | Iranian Stew | خورش ایرانی | Iranian | Heavy, 60–150 min, weekend, prep ahead | Ghormeh sabzi, gheymeh, fesenjoon, morgh torsh, khoresh karafs, aloo esfenaj. |
+| 4 | 🍚 | Dami & Mixed Rice | دمی و پلوهای مخلوط | Iranian | Medium–heavy, 40–90 min | Loobia polo, adas polo, dami gojeh, havij-o-morgh la polo, gharch-o-morgh la polo, tahchin, rice with minced meat, meygo polo. |
+| 5 | 🍗 | Chicken Plate with Vegetables & Starch | بشقاب مرغ با سبزیجات و نشاسته | International | Medium, 25–55 min | Souvlaki with roasted vegetables, roast chicken with root vegetables, butter chicken with rice, teriyaki chicken with steamed vegetables. |
+| 6 | 🐟 | Seafood | ماهی و غذای دریایی | Either | Medium, 20–50 min | Salmon with vegetables, steamed fish with vegetables, fried shrimp, shrimp pasta, meygo polo, tuna and egg. At most once a week. |
+| 7 | 🍝 | Pasta & Noodles | پاستا و نودل | International | Quick, 20–45 min | Iranian makaroni, penne primavera, spinach and ricotta pasta, lasagna (prep ahead), stir-fried noodles. |
+| 8 | 🌯 | Wraps & Sandwiches | رپ و ساندویچ | Either | Medium, 20–45 min | Homemade burger, chicken shawarma wrap, kotlet sandwich, tortilla wrap, soft tacos, falafel wrap. |
+| 9 | 🥧 | Oven / One-Dish Meals | غذای فر و یک‌ظرفه | Either | Medium, 30–60 min | Pirashki, samosa, kotlet with roasted vegetables, chicken and vegetable tray bake, potato gratin, casserole, stuffed peppers. |
+| 10 | 🥗 | Cold Plate / Complete Salad | بشقاب سرد و سالاد کامل | Either | Quick, 15–35 min | Salad olivieh, macaroni salad, potato salad, tuna and egg plate, lentil and roasted vegetable salad, sushi. |
+| 11 | 🥣 | Soup / Ash | سوپ و آش | Either | Medium, 30–60 min | Ash reshteh, adasi, barley soup, chicken and vegetable soup, abdoogh khiar in summer. |
+| 12 | 🍕 | Pizza | پیتزا | International | Medium, 30–45 min | Homemade vegetable and chicken pizza, mushroom pizza, calzone. |
 
 ## Two-week dinner rotation
 
+Only dinner is planned. Saturday is always eating out. Sunday is a fixed theme
+in each week rather than a choice.
+
 | | Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Week 1 | International Mains | Quick Iranian | Seafood | Iranian Rice & Dami | Pasta & Noodles | Eat out | Iranian Grills or Iranian Stews & Slow Dishes |
-| Week 2 | Flexible Choice | Simple Soups & No-Cook | Salads & Light Plates | Handheld & Oven Meals | Casual Favorites | Eat out | Iranian Grills or Iranian Stews & Slow Dishes |
+| Week 1 | 🍕 Pizza | 🥗 Cold Plate / Complete Salad | 🍝 Pasta & Noodles | 🐟 Seafood | 🍢 Kebab & Grill | Eat out | 🍲 Iranian Stew |
+| Week 2 | 🍗 Chicken Plate with Vegetables & Starch | 🥣 Soup / Ash | 🌯 Wraps & Sandwiches | 🥧 Oven / One-Dish Meals | 🍚 Dami & Mixed Rice | Eat out | 🍳 Simple Pan Meals |
+
+As `catId` values: week 1 is `12, 10, 7, 6, 2, –, 3` and week 2 is
+`5, 11, 8, 9, 4, –, 1`. Week 1 is any week whose Monday is an even number of
+weeks after Monday 2024-01-01; `pb_hooks/meal_planning/calendar.js` and
+`app/lib/rotation.ts` both encode the same tables.
 
 ## Selection rules
 
-- The visible category remains the main dinner theme, except Flexible Choice,
-  which deliberately allows the full eligible library.
+- The visible category is the dinner theme, and the dinner must clearly belong
+  to it. There is no free-choice slot.
 - Multi-category recipes are eligible in every related theme. For example,
-  shrimp pasta can appear under both Seafood and Pasta & Noodles.
-- Effort ranges and category notes are recommendation inputs, not only display
-  labels.
+  shrimp pasta can appear under both Seafood and Pasta & Noodles, and meygo
+  polo under both Seafood and Dami & Mixed Rice.
+- The category notes list example dishes; effort ranges and notes are
+  recommendation inputs, not only display labels.
 - Exact household recipes, feedback, recent cooking, saved recipes, and the
   current week's plan still determine ranking within a theme.
 
 ## Replacement mapping
 
-The 2026-08-25 production migration retained every category record and `catId`
-so historical meal assignments remained valid. It broadened or clarified IDs
-1–11. ID 12 changed from Pizza to Flexible Choice; existing pizza dishes moved
-to Casual Favorites and also relate to Handheld & Oven Meals.
+The 2026-09-11 production migration retained every category record and `catId`
+so historical meal assignments remained valid. Each ID kept its concept:
+
+| ID | Was | Now |
+| ---: | --- | --- |
+| 1 | Quick Iranian | Simple Pan Meals |
+| 2 | Iranian Grills | Kebab & Grill (no longer weekend-only; it is a Friday) |
+| 3 | Iranian Stews & Slow Dishes | Iranian Stew |
+| 4 | Iranian Rice & Dami | Dami & Mixed Rice |
+| 5 | International Mains | Chicken Plate with Vegetables & Starch |
+| 6 | Seafood | Seafood |
+| 7 | Pasta & Noodles | Pasta & Noodles |
+| 8 | Casual Favorites | Wraps & Sandwiches (burgers stay; pizza and sushi move) |
+| 9 | Handheld & Oven Meals | Oven / One-Dish Meals |
+| 10 | Salads & Light Plates | Cold Plate / Complete Salad (sushi joins) |
+| 11 | Simple Soups & No-Cook | Soup / Ash (skillet dinners move to 1) |
+| 12 | Flexible Choice | Pizza |
+
+The same migration corrected mis-filed dishes: pizza to 12, sushi to 10,
+ricotta pasta from 4 to 7, a typed-in fish from 5 to 6, macaroni salad from 6
+to 10, tomato omelette and the tomato-eggplant-potato skillet from 11 to 1,
+and it removed the false Seafood relation from lamb shank (ماهیچه).

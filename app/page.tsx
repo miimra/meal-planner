@@ -14,7 +14,7 @@ import {
   type MealSlot,
   type PlanDay,
 } from "./lib/plan.ts";
-import { EFFORT_LABEL, type Category } from "./lib/categories.ts";
+import { EFFORT_LABEL } from "./lib/categories.ts";
 import { DAY_SHORT, effortRange, rotationWeekOf, toDayIndex } from "./lib/rotation.ts";
 import { useMealPlan } from "./lib/useMealPlan.ts";
 import { useCurrentTime } from "./lib/useCurrentTime.ts";
@@ -132,11 +132,11 @@ function Header({ now, today }: { now: Date; today: string }) {
 
 function Hero({ slot, date, when }: { slot: MealSlot; date: string; when: "tonight" | "tomorrow" }) {
   const status = STATUS[slot.status];
-  const category = slot.category ?? (slot.categoryOptions.length === 1 ? slot.categoryOptions[0] : null);
+  const category = slot.category;
   const cooked = slot.status === "cooked";
   const title = slot.dish?.name ?? status.title;
   const detail = slot.dish ? (cooked ? status.detail : "Decided. Nothing to think about.") : status.detail;
-  const persian = category?.name_fa ?? slot.categoryOptions.map((option) => option.name_fa).join(" یا ");
+  const persian = category?.name_fa;
 
   return (
     <section className="rise" style={step(3)}>
@@ -178,8 +178,6 @@ function Hero({ slot, date, when }: { slot: MealSlot; date: string; when: "tonig
             )}
           </div>
 
-          {slot.categoryOptions.length > 1 && <ChoiceCallout options={slot.categoryOptions} />}
-
           {category?.notes && (
             <p className="mt-4 rounded-2xl border border-dashed border-line bg-bg-sunken/60 px-4 py-3 text-sm text-ink-soft">
               {category.notes}
@@ -190,27 +188,6 @@ function Hero({ slot, date, when }: { slot: MealSlot; date: string; when: "tonig
         </div>
       </article>
     </section>
-  );
-}
-
-function ChoiceCallout({ options }: { options: Category[] }) {
-  return (
-    <div className="mt-4 grid gap-2">
-      <p className="tick text-ink-faint">Your pick</p>
-      <div className="grid grid-cols-2 gap-2">
-        {options.map((option, index) => (
-          <div
-            key={option.catId}
-            className="pop rounded-2xl border border-line bg-bg-sunken/50 px-3 py-3 text-center"
-            style={{ ...step(index), animationDelay: `${0.5 + index * 0.1}s` }}
-          >
-            <span className="block text-2xl">{option.emoji}</span>
-            <span className="mt-1 block text-sm font-bold">{option.name_en}</span>
-            <span className="fa mt-0.5 block text-xs text-ink-faint">{option.name_fa}</span>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -261,7 +238,7 @@ function WeekRail({ week, today }: { week: PlanDay[]; today: string }) {
                   }}
                 />
                 <span className={`absolute bottom-full left-1/2 mb-[0.45rem] -translate-x-1/2 text-sm leading-none ${past ? "opacity-45" : ""}`}>
-                  {slot.category?.emoji ?? slot.categoryOptions[0]?.emoji ?? (slot.status === "eating_out" ? "🍽️" : "·")}
+                  {slot.category?.emoji ?? (slot.status === "eating_out" ? "🍽️" : "·")}
                 </span>
                 <span className="tick absolute left-1/2 top-full mt-[0.45rem] -translate-x-1/2 text-[0.5625rem] text-ink-faint">
                   {DAY_SHORT[toDayIndex(dateFromKey(day.date))]}
@@ -302,7 +279,7 @@ function DinnerRow({ day, now, index }: { day: PlanDay; now: Date; index: number
   const expired = !slot.dish && slot.status === "unplanned" && passed;
   const cooked = slot.status === "cooked";
   const title = slot.dish?.name ?? (expired ? "Nothing recorded" : status.title);
-  const category = slot.category ?? (slot.categoryOptions.length === 1 ? slot.categoryOptions[0] : null);
+  const category = slot.category;
 
   return (
     <article
@@ -320,16 +297,10 @@ function DinnerRow({ day, now, index }: { day: PlanDay; now: Date; index: number
       <div className="min-w-0 flex-1">
         <p className="tick text-ink-faint">{dayLabel(day.date, "short")}</p>
         <p className="bidi mt-1 truncate font-bold text-[1.0625rem]">{title}</p>
-        {category ? (
+        {category && (
           <p className="mt-0.5 truncate text-xs text-ink-soft">
             {category.name_en} <span className="fa">· {category.name_fa}</span>
           </p>
-        ) : (
-          slot.categoryOptions.length > 1 && (
-            <p className="mt-0.5 truncate text-xs text-ink-soft">
-              {slot.categoryOptions.map((option) => `${option.emoji} ${option.name_en}`).join(" or ")}
-            </p>
-          )
         )}
       </div>
       {cooked && <span className="pop text-lg text-pesteh">🌿</span>}

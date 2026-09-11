@@ -6,10 +6,10 @@ import type { Category } from "./categories.ts";
 const fixtureCategories: Category[] = [
   {
     pbId: "abc123",
-    catId: 5,
-    name_en: "International Mains",
-    name_fa: "غذای اصلی بین‌المللی",
-    emoji: "🌍",
+    catId: 12,
+    name_en: "Pizza",
+    name_fa: "پیتزا",
+    emoji: "🍕",
     style: "international",
     effort: "medium",
     effort_minutes: [30, 45],
@@ -19,27 +19,35 @@ const fixtureCategories: Category[] = [
 test("planForDay returns a categoryId for a weekday", () => {
   const plan = planForDay(1, 0); // Monday, week 1
   assert.equal(plan.kind, "weekday");
-  assert.equal(plan.categoryId, 5);
+  assert.equal(plan.categoryId, 12);
 });
 
-test("planForDay marks Saturday as eat-out", () => {
-  const plan = planForDay(1, 5);
-  assert.equal(plan.kind, "eat-out");
-  assert.equal(plan.categoryId, undefined);
+test("planForDay follows the two-week table Monday through Sunday", () => {
+  const ids = (week: 1 | 2) => [0, 1, 2, 3, 4, 5, 6].map((day) => planForDay(week, day as 0 | 1 | 2 | 3 | 4 | 5 | 6).categoryId);
+  assert.deepEqual(ids(1), [12, 10, 7, 6, 2, undefined, 3]);
+  assert.deepEqual(ids(2), [5, 11, 8, 9, 4, undefined, 1]);
 });
 
-test("planForDay offers two choices on Sunday", () => {
-  const plan = planForDay(1, 6);
-  assert.equal(plan.kind, "sunday-choice");
-  assert.deepEqual(plan.choiceIds, [2, 3]);
+test("planForDay marks Saturday as eat-out in both weeks", () => {
+  for (const week of [1, 2] as const) {
+    const plan = planForDay(week, 5);
+    assert.equal(plan.kind, "eat-out");
+    assert.equal(plan.categoryId, undefined);
+  }
+});
+
+test("planForDay gives Sunday a fixed category per week", () => {
+  assert.equal(planForDay(1, 6).kind, "weekday");
+  assert.equal(planForDay(1, 6).categoryId, 3);
+  assert.equal(planForDay(2, 6).categoryId, 1);
 });
 
 test("planLabel resolves a weekday plan against known categories", () => {
   const plan = planForDay(1, 0);
   const label = planLabel(plan, fixtureCategories);
-  assert.equal(label.title, "International Mains");
-  assert.equal(label.emoji, "🌍");
-  assert.equal(label.fa, "غذای اصلی بین‌المللی");
+  assert.equal(label.title, "Pizza");
+  assert.equal(label.emoji, "🍕");
+  assert.equal(label.fa, "پیتزا");
 });
 
 test("planLabel falls back gracefully when categories haven't loaded yet", () => {

@@ -37,9 +37,35 @@ function WeekIcon() {
   );
 }
 
+/** A two-by-two of tiles — the rotation laid out as a grid of themes. */
+function CategoriesIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      {[
+        [4, 4],
+        [13.5, 4],
+        [4, 13.5],
+        [13.5, 13.5],
+      ].map(([x, y]) => (
+        <rect
+          key={`${x}-${y}`}
+          x={x}
+          y={y}
+          width="6.5"
+          height="6.5"
+          rx="2"
+          stroke="currentColor"
+          strokeWidth="1.7"
+        />
+      ))}
+    </svg>
+  );
+}
+
 const TABS = [
   { href: "/", label: "Today", Icon: TodayIcon },
   { href: "/week", label: "Week", Icon: WeekIcon },
+  { href: "/categories", label: "Categories", Icon: CategoriesIcon },
 ];
 
 export default function BottomNav() {

@@ -18,9 +18,14 @@ test("effort and vegetable modifiers remain compatible with every category", () 
   assert.equal(preference.matchesDinnerCategory("more veggies", fish, dishes), true);
 });
 
-test("flexible choice accepts every explicit food preference", () => {
-  const flexible = { catId: 12, name: "Flexible Choice", nameFa: "انتخاب آزاد" };
-  assert.equal(preference.matchesDinnerCategory("chicken tacos", flexible, dishes), true);
+test("every rotation category, pizza included, has its own food terms", () => {
+  const pizza = { catId: 12, name: "Pizza", nameFa: "پیتزا" };
+  assert.equal(preference.matchesDinnerCategory("veggie pizza", pizza, dishes), true);
+  assert.equal(preference.matchesDinnerCategory("chicken tacos", pizza, dishes), false);
+  const wraps = { catId: 8, name: "Wraps & Sandwiches", nameFa: "رپ و ساندویچ" };
+  assert.equal(preference.matchesDinnerCategory("chicken tacos", wraps, dishes), true);
+  const soup = { catId: 11, name: "Soup / Ash", nameFa: "سوپ و آش" };
+  assert.equal(preference.matchesDinnerCategory("ash reshteh", soup, dishes), true);
 });
 
 test("excluded food terms are detected in generated details", () => {

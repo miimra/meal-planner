@@ -127,8 +127,7 @@ function WeekStrip({ days, today }: { days: PlanDay[]; today: string }) {
               {DAY_SHORT[toDayIndex(dateFromKey(day.date))]}
             </span>
             <span className={`text-xl ${current ? "bob" : ""}`}>
-              {dinner.category?.emoji ??
-                (dinner.categoryOptions[0]?.emoji ?? (dinner.status === "eating_out" ? "🍽️" : "✳️"))}
+              {dinner.category?.emoji ?? (dinner.status === "eating_out" ? "🍽️" : "✳️")}
             </span>
           </div>
         );
@@ -202,7 +201,7 @@ function WeekMeal({ date, slot, now }: { date: string; slot: MealSlot; now: Date
   const meta = MEAL_META[slot.meal];
   const expired = !slot.dish && slot.status === "unplanned" && mealHasPassed(date, slot.meal, now);
   const name = slot.dish?.name ?? (expired ? "Nothing recorded" : STATUS[slot.status]);
-  const category = slot.category ?? (slot.categoryOptions.length === 1 ? slot.categoryOptions[0] : null);
+  const category = slot.category;
   const cooked = slot.status === "cooked";
 
   return (
@@ -215,8 +214,6 @@ function WeekMeal({ date, slot, now }: { date: string; slot: MealSlot; now: Date
             <>
               {category.name_en} <span className="fa">· {category.name_fa}</span>
             </>
-          ) : slot.categoryOptions.length > 1 ? (
-            slot.categoryOptions.map((option) => option.name_en).join(" or ")
           ) : (
             meta.label
           )}

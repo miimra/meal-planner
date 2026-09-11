@@ -302,31 +302,45 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
   const groupChat = { id: -100123, type: "group", title: "Home" };
   const privateChat = { id: 111, type: "private", first_name: "Alex" };
 
-  await t.test("the replacement dinner taxonomy and cross-category relations are migrated", async () => {
+  await t.test("the two-week dinner taxonomy and cross-category relations are migrated", async () => {
     const categories = (await list("categories")).sort((left, right) => left.catId - right.catId);
     assert.deepEqual(categories.map((item) => item.name_en), [
-      "Quick Iranian",
-      "Iranian Grills",
-      "Iranian Stews & Slow Dishes",
-      "Iranian Rice & Dami",
-      "International Mains",
+      "Simple Pan Meals",
+      "Kebab & Grill",
+      "Iranian Stew",
+      "Dami & Mixed Rice",
+      "Chicken Plate with Vegetables & Starch",
       "Seafood",
       "Pasta & Noodles",
-      "Casual Favorites",
-      "Handheld & Oven Meals",
-      "Salads & Light Plates",
-      "Simple Soups & No-Cook",
-      "Flexible Choice",
+      "Wraps & Sandwiches",
+      "Oven / One-Dish Meals",
+      "Cold Plate / Complete Salad",
+      "Soup / Ash",
+      "Pizza",
     ]);
+    for (const category of categories) {
+      assert.ok(category.emoji, "emoji for " + category.name_en);
+      assert.ok(category.name_fa, "Persian name for " + category.name_en);
+      assert.match(category.notes, /Examples:/, "examples for " + category.name_en);
+      assert.ok(category.effort_min > 0 && category.effort_max >= category.effort_min, "effort for " + category.name_en);
+    }
+    assert.equal(categories.find((item) => item.catId === 2).weekend_only, false);
     const byCatId = new Map(categories.map((item) => [item.catId, item]));
     const dishes = await list("dishes");
     const pizza = dishes.find((item) => /پیتزا/.test(item.name));
+    const sushi = dishes.find((item) => /سوشی/.test(item.name));
+    const burger = dishes.find((item) => /همبرگر/.test(item.name));
     const shrimpPasta = dishes.find((item) => /میگو پاستا/.test(item.name));
-    assert.equal(pizza.catId, 8);
-    assert.ok(pizza.categories.includes(byCatId.get(8).id));
-    assert.ok(pizza.categories.includes(byCatId.get(9).id));
+    const shank = dishes.find((item) => /پلو ماهیچه/.test(item.name));
+    assert.equal(pizza.catId, 12);
+    assert.deepEqual(pizza.categories, [byCatId.get(12).id]);
+    assert.equal(sushi.catId, 10);
+    assert.ok(!sushi.categories.includes(byCatId.get(8).id));
+    assert.equal(burger.catId, 8);
     assert.ok(shrimpPasta.categories.includes(byCatId.get(6).id));
     assert.ok(shrimpPasta.categories.includes(byCatId.get(7).id));
+    assert.ok(!shank.categories.includes(byCatId.get(6).id));
+    assert.ok(shank.categories.includes(byCatId.get(4).id));
   });
 
   assert.equal((await webhook({ update_id: 1 }, "wrong-secret")).status, 404);
@@ -374,11 +388,8 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
 
   const today = amsterdamDate();
   const tomorrow = addDays(today, 1);
-  // Whether "today" itself needs the Sunday category gate: true on one day in
-  // seven, whatever real-world weekday the suite happens to run on.
-  const todayIsSunday = nextWeekday(today, 0) === today;
-  // Monday, Tuesday and Wednesday always resolve to a single dinner category,
-  // so these flows never hit the Sunday choice gate whatever day the suite runs.
+  // Monday, Tuesday and Wednesday are always cooking days, so these flows
+  // never land on the Saturday eat-out slot whatever day the suite runs.
   const planDay = nextWeekday(addDays(today, 1), 1);
   const secondPlanDay = addDays(planDay, 1);
   const thirdPlanDay = addDays(planDay, 2);
@@ -475,16 +486,8 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.doesNotMatch(panel.body.text, /paused/i);
   });
 
-  await t.test("meal-change screens show current food and require an explicit Sunday category", async () => {
-    // The single-category flow below assumes a non-Sunday date. On the one
-    // day in seven where "today" itself is a Sunday, exercise it against
-    // tomorrow (always Monday, never the gate) instead, seeding that date's
-    // assignment ourselves since only "today" was seeded earlier.
-    const changeDay = todayIsSunday ? tomorrow : today;
-    if (todayIsSunday) {
-      const chosenDish = (await list("dishes"))[0];
-      await create("meal_assignments", { date: changeDay, meal: "dinner", dish: chosenDish.id, status: "planned", selection_source: "telegram" });
-    }
+  await t.test("meal-change screens show current food and Sunday has a fixed category", async () => {
+    const changeDay = today;
 
     // Dinner is the only planned meal, so choosing a date opens the change
     // panel itself instead of a chooser holding a single button.
@@ -508,20 +511,20 @@ test("Telegram household assistant PocketBase integration", { timeout: 60_000 },
     assert.match(edit.body.text, /Current: <b>.+<\/b>/);
     assert.match(JSON.stringify(edit.body.reply_markup), /Leftovers/);
 
-    // Search from tomorrow, not today: today itself may already be Sunday
-    // (see changeDay above), and picking a category here mutates whichever
-    // assignment lives on this date, so it must never land back on today's.
+    // Sunday is a fixed rotation theme (Iranian Stew or Simple Pan Meals), so
+    // the change panel names it and offers Suggest without a category step.
     const sunday = nextWeekday(tomorrow, 0);
     await webhook({ update_id: nextUpdate(), callback_query: { id: "sunday-dinner", from: { id: 111 }, data: `pick:meal:${sunday}:dinner`, message: { message_id: 705, chat: groupChat } } });
     edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
-    assert.match(edit.body.text, /Category: <b>choose/);
-    assert.doesNotMatch(JSON.stringify(edit.body.reply_markup), /do:suggest/);
-    const categoryButton = edit.body.reply_markup.inline_keyboard.flat().find((button) => String(button.callback_data || "").startsWith(`pick:cat:${sunday}:dinner:`));
-    assert.ok(categoryButton);
-    await webhook({ update_id: nextUpdate(), callback_query: { id: "sunday-category", from: { id: 111 }, data: categoryButton.callback_data, message: { message_id: 705, chat: groupChat } } });
-    edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
-    assert.match(edit.body.text, /Category: <b>/);
+    assert.match(edit.body.text, /Category: <b>(🍲 Iranian Stew|🍳 Simple Pan Meals)<\/b>/);
     assert.match(JSON.stringify(edit.body.reply_markup), /do:suggest/);
+    assert.doesNotMatch(JSON.stringify(edit.body.reply_markup), /pick:cat/);
+
+    // Saturday is always eating out and carries no category.
+    const saturday = nextWeekday(tomorrow, 6);
+    await webhook({ update_id: nextUpdate(), callback_query: { id: "saturday-dinner", from: { id: 111 }, data: `pick:meal:${saturday}:dinner`, message: { message_id: 705, chat: groupChat } } });
+    edit = mock.telegram.filter((call) => call.method === "editMessageText").at(-1);
+    assert.match(edit.body.text, /no category · eat-out day/);
   });
 
   await t.test("old planning buttons cannot change past dates", async () => {

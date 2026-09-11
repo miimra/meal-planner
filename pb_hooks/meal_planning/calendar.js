@@ -41,9 +41,9 @@ function dinnerRotation(value) {
   const rotationWeek = ((weekOffset % 2) + 2) % 2 === 0 ? 1 : 2;
   const day = (date.getUTCDay() + 6) % 7;
   if (day === 5) return { kind: "eat_out", rotationWeek };
-  if (day === 6) return { kind: "choice", rotationWeek, catIds: [2, 3] };
-  const weekOne = [5, 1, 6, 4, 7];
-  const weekTwo = [12, 11, 10, 9, 8];
+  // Monday → Sunday, Saturday skipped; see docs/meal-categories.md.
+  const weekOne = [12, 10, 7, 6, 2, null, 3];
+  const weekTwo = [5, 11, 8, 9, 4, null, 1];
   return { kind: "category", rotationWeek, catId: (rotationWeek === 1 ? weekOne : weekTwo)[day] };
 }
 

@@ -116,8 +116,7 @@ under **Not cooking…**. Use **More → Choose another date** for dates outside
 the current week. **Leftovers**
 stores only the neutral “Left over” state and never guesses which earlier dish
 is being reused. The change screen always shows the current choice and the
-dinner rotation category. Sunday requires choosing Grilled or Stew before a
-suggestion can be generated. Accepting a
+dinner rotation category. Accepting a
 suggestion updates an existing assignment as well as a new one. **Another**
 replaces the suggestion card rather than posting another card.
 
@@ -146,10 +145,12 @@ Suggestions are vegetable-forward, non-spicy, low in added salt and sugar,
 and include a dish-specific baby instruction only when the baby is eating.
 Breakfast and lunch are always very simple (easy, at most 20 minutes, and no
 more than eight ingredients). Dinner's visible rotation category is the main
-planning theme; **Flexible Choice** deliberately opens the full eligible meal
-library. Category notes, effort ranges, multi-category dish relations, and
-compact recipe facts all participate in selection. The canonical category list
-and rotation are kept in [`docs/meal-categories.md`](docs/meal-categories.md).
+planning theme, and every day has exactly one: Saturday is eating out and
+Sunday is a fixed theme per rotation week. Category notes (which list example
+dishes), effort ranges, multi-category dish relations, and compact recipe
+facts all participate in selection. The canonical category list and rotation
+are kept in [`docs/meal-categories.md`](docs/meal-categories.md), and the web
+app's `/categories` page shows the same table with every stored field.
 Baby details live behind the card's **Details** button so photo
 captions stay compact. The bot no longer echoes ingredient lists back into the
 chat.
@@ -163,7 +164,7 @@ generation or upload fails, the text suggestion and all of its buttons remain
 usable.
 
 At 18:30, PocketBase sends one new check-in that puts tomorrow first: all three
-meal decisions, the dinner category (or Sunday category choice), and a direct
+meal decisions, the dinner category, and a direct
 **Plan tomorrow** button. Today's chosen meals remain underneath with a feedback
 entry point when at least one dish can be rated. Its buttons edit that daily
 message in place. It does not send separate meal cards or unsolicited summary
