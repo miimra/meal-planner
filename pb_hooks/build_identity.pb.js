@@ -12,10 +12,29 @@ routerAdd("GET", "/api/version", (e) => {
 routerUse((e) => {
   if (e.request.url.path === "/api/health") {
     const buildIdentity = require(`${__hooks}/build_identity.js`);
+    const data = {};
+    if (e.hasSuperuserAuth()) {
+      const trustedProxyHeaders = $app.settings().trustedProxy.headers || [];
+      data.canBackup = !$app.store().has("@activeBackup");
+      data.realIP = e.realIP();
+      data.possibleProxyHeader = "";
+      const headersToCheck = [
+        ...trustedProxyHeaders,
+        "CF-Connecting-IP",
+        "Fly-Client-IP",
+        "X-Forwarded-For",
+      ];
+      for (const header of headersToCheck) {
+        if (e.request.header.get(header)) {
+          data.possibleProxyHeader = header;
+          break;
+        }
+      }
+    }
     return e.json(200, {
       message: "API is healthy.",
       code: 200,
-      data: {},
+      data,
       ...buildIdentity,
     });
   }

@@ -9,6 +9,8 @@ const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 
 const ROOT = path.resolve(__dirname, "..");
+const SUPERUSER_EMAIL = "build-identity@example.test";
+const SUPERUSER_PASSWORD = "build-identity-password";
 
 function findPocketBase() {
   if (process.env.POCKETBASE_BIN && fs.existsSync(process.env.POCKETBASE_BIN)) return process.env.POCKETBASE_BIN;
@@ -27,7 +29,7 @@ function freePort() {
   });
 }
 
-async function startPocketBase(t, identity) {
+async function startPocketBase(t, identity, withSuperuser = false) {
   const pocketbase = findPocketBase();
   if (!pocketbase) {
     t.skip("set POCKETBASE_BIN to run PocketBase integration tests");
@@ -44,10 +46,21 @@ async function startPocketBase(t, identity) {
     );
   }
 
+  const dataDir = path.join(tempDir, "pb_data");
+  if (withSuperuser) {
+    const setup = spawnSync(pocketbase, [
+      "superuser", "upsert", SUPERUSER_EMAIL, SUPERUSER_PASSWORD,
+      "--dir", dataDir,
+      "--hooksDir", hooksDir,
+      "--dev=false",
+    ], { encoding: "utf8" });
+    assert.equal(setup.status, 0, setup.stdout + "\n" + setup.stderr);
+  }
+
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   const child = spawn(pocketbase, [
-    "serve", "--dir", path.join(tempDir, "pb_data"),
+    "serve", "--dir", dataDir,
     "--hooksDir", hooksDir,
     "--publicDir", path.join(tempDir, "public"),
     "--http", `127.0.0.1:${port}`,
@@ -126,4 +139,37 @@ test("PocketBase uses development identity without injected metadata", { timeout
   });
   assert.deepEqual(apiVersion, version);
   assert.deepEqual(Object.fromEntries(Object.keys(version).map((key) => [key, health[key]])), version);
+});
+
+test("PocketBase health preserves superuser fields alongside build identity", { timeout: 15_000 }, async (t) => {
+  const identity = {
+    service: "meal-planner",
+    version: "0.1.0+2.abc1234",
+    commit: "0123456789abcdef0123456789abcdef01234567",
+    builtAt: "2026-10-16T02:30:00Z",
+  };
+  const baseUrl = await startPocketBase(t, identity, true);
+  if (!baseUrl) return;
+
+  const authResponse = await fetch(baseUrl + "/api/collections/_superusers/auth-with-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identity: SUPERUSER_EMAIL, password: SUPERUSER_PASSWORD }),
+  });
+  const auth = await authResponse.json();
+  assert.equal(authResponse.status, 200, JSON.stringify(auth));
+
+  const response = await fetch(baseUrl + "/api/health", {
+    headers: {
+      Authorization: "Bearer " + auth.token,
+      "X-Forwarded-For": "203.0.113.12",
+    },
+  });
+  const health = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(health));
+  assert.deepEqual(Object.fromEntries(Object.keys(identity).map((key) => [key, health[key]])), identity);
+  assert.deepEqual(Object.keys(health.data).sort(), ["canBackup", "possibleProxyHeader", "realIP"]);
+  assert.equal(health.data.canBackup, true);
+  assert.equal(health.data.possibleProxyHeader, "X-Forwarded-For");
+  assert.equal(health.data.realIP, "127.0.0.1");
 });
