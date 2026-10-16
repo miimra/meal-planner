@@ -17,11 +17,23 @@ serves both the bot API and the statically exported Next.js overview.
 
 ## Deploy
 
-Commit and push `main`, then run this from the development checkout:
+Production is deployed only by the `Deploy` GitHub Actions workflow
+(`.github/workflows/deploy.yml`). Every push to `main` runs it, and it can be
+started by hand with **Run workflow**. Development machines hold no production
+credentials. Runs are serialised and each one deploys the current tip of `main`,
+so a deployed commit always contains every earlier merge.
 
-```bash
-./deploy.sh
-```
+The workflow runs `./deploy.sh` with these repository settings:
+
+| Kind | Name | Value |
+| --- | --- | --- |
+| Secret | `VPS_SSH_KEY` | private key authorised for the production account |
+| Variable | `VPS_HOST` | production server host name |
+| Variable | `VPS_USER` | production account, defaults to `ubuntu` |
+| Variable | `VPS_KNOWN_HOSTS` | the server's `known_hosts` line(s); scanned when unset |
+| Variable | `DEPLOY_PATH` | optional, defaults to `/srv/meal-planner` |
+| Variable | `DEPLOY_HEALTH_URL` | public `/api/health` URL |
+| Variable | `DEPLOY_VERSION_URL` | public `/api/version` URL |
 
 The script refuses to deploy a dirty tree, another branch, or a commit that is
 not exactly `origin/main`. Before touching production it runs `npm ci`, rejects
@@ -59,7 +71,8 @@ runs `scripts/deploy-host.sh`. The host helper:
 7. registers Telegram commands and the webhook, then verifies Telegram's API;
 8. tags the healthy image as `meal-planner:latest`.
 
-Optional overrides are available for a different environment:
+The same script can deploy a different environment by hand from a machine that
+holds that environment's credentials:
 
 ```bash
 DEPLOY_HOST=user@example DEPLOY_PATH=/srv/meal-planner ./deploy.sh
