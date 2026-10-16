@@ -28,6 +28,25 @@ not exactly `origin/main`. Before touching production it runs `npm ci`, rejects
 high-severity production dependency advisories, runs the complete test suite,
 and creates the Next.js production build.
 
+### Release identity
+
+Before the first production deployment using this flow, the repository owner
+must publish `v0.1.0` on the intended release commit. Each deployment fetches
+release tags and requires a reachable `vX.Y.Z` tag for the shipped commit. An
+exact tag builds as `X.Y.Z`; a later commit builds as `X.Y.Z+N.<short-sha>`.
+A missing or malformed tag anchor stops deployment before an image is built.
+
+The deployment passes the derived version, full commit SHA, and UTC build
+timestamp to the image as build arguments. PocketBase exposes that immutable
+identity without authentication at `/version` and `/api/version`; `/api/health`
+retains its health status and includes the same fields. After the host is
+updated, `deploy.sh` reads the public `/api/version` response and fails unless
+its `commit` is a well-formed full SHA matching the shipped commit.
+
+After the initial tagged production deployment, the owner should verify that
+the public `/api/version` response reports the tagged version and deployed
+commit.
+
 Over SSH it fast-forwards the production checkout to the verified commit and
 runs `scripts/deploy-host.sh`. The host helper:
 
