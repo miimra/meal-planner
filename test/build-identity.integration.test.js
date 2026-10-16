@@ -162,7 +162,7 @@ test("PocketBase health preserves superuser fields alongside build identity", { 
   const response = await fetch(baseUrl + "/api/health", {
     headers: {
       Authorization: "Bearer " + auth.token,
-      "X-Forwarded-For": "203.0.113.12",
+      "CF-Connecting-IP": "203.0.113.12",
     },
   });
   const health = await response.json();
@@ -170,6 +170,16 @@ test("PocketBase health preserves superuser fields alongside build identity", { 
   assert.deepEqual(Object.fromEntries(Object.keys(identity).map((key) => [key, health[key]])), identity);
   assert.deepEqual(Object.keys(health.data).sort(), ["canBackup", "possibleProxyHeader", "realIP"]);
   assert.equal(health.data.canBackup, true);
-  assert.equal(health.data.possibleProxyHeader, "X-Forwarded-For");
+  assert.equal(health.data.possibleProxyHeader, "CF-Connecting-IP");
   assert.equal(health.data.realIP, "127.0.0.1");
+
+  const forwardedResponse = await fetch(baseUrl + "/api/health", {
+    headers: {
+      Authorization: "Bearer " + auth.token,
+      "X-Forwarded-For": "203.0.113.12",
+    },
+  });
+  const forwardedHealth = await forwardedResponse.json();
+  assert.equal(forwardedResponse.status, 200, JSON.stringify(forwardedHealth));
+  assert.equal(forwardedHealth.data.possibleProxyHeader, "");
 });

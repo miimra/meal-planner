@@ -22,7 +22,6 @@ routerUse((e) => {
         ...trustedProxyHeaders,
         "CF-Connecting-IP",
         "Fly-Client-IP",
-        "X-Forwarded-For",
       ];
       for (const header of headersToCheck) {
         if (e.request.header.get(header)) {
