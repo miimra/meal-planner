@@ -23,14 +23,14 @@ started by hand with **Run workflow**. Development machines hold no production
 credentials. Runs are serialised and each one deploys the current tip of `main`,
 so a deployed commit always contains every earlier merge.
 
-The workflow runs `./deploy.sh` with settings from the `production` environment
-of the repository:
+The workflow runs `./deploy.sh` with these repository settings:
 
 | Kind | Name | Value |
 | --- | --- | --- |
-| Secret | `DEPLOY_SSH_KEY` | private key authorised for the production account |
-| Variable | `DEPLOY_HOST` | `user@host` of the production server |
-| Variable | `DEPLOY_KNOWN_HOSTS` | the server's `known_hosts` line(s) |
+| Secret | `VPS_SSH_KEY` | private key authorised for the production account |
+| Variable | `VPS_HOST` | production server host name |
+| Variable | `VPS_USER` | production account, defaults to `ubuntu` |
+| Variable | `VPS_KNOWN_HOSTS` | the server's `known_hosts` line(s); scanned when unset |
 | Variable | `DEPLOY_PATH` | optional, defaults to `/srv/meal-planner` |
 | Variable | `DEPLOY_HEALTH_URL` | public `/api/health` URL |
 | Variable | `DEPLOY_VERSION_URL` | public `/api/version` URL |

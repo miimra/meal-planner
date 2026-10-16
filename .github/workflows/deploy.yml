@@ -20,9 +20,7 @@ jobs:
   deploy:
     name: Deploy to production
     runs-on: ubuntu-latest
-    environment: production
     env:
-      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
       DEPLOY_HEALTH_URL: ${{ vars.DEPLOY_HEALTH_URL }}
       DEPLOY_VERSION_URL: ${{ vars.DEPLOY_VERSION_URL }}
@@ -37,20 +35,27 @@ jobs:
           node-version: 22
           cache: npm
 
-      # The key and host key come only from the production environment; they
-      # are written to the runner's temporary directory and never echoed.
+      # The key is written only to the runner's home and never echoed. The host
+      # key comes from VPS_KNOWN_HOSTS, falling back to a scan of the host.
       - name: Configure SSH
         env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
         run: |
-          [ -n "$DEPLOY_SSH_KEY" ] || { echo "DEPLOY_SSH_KEY is not set in the production environment" >&2; exit 1; }
-          [ -n "$DEPLOY_KNOWN_HOSTS" ] || { echo "DEPLOY_KNOWN_HOSTS is not set in the production environment" >&2; exit 1; }
-          [ -n "$DEPLOY_HOST" ] || { echo "DEPLOY_HOST is not set in the production environment" >&2; exit 1; }
+          [ -n "$VPS_SSH_KEY" ] || { echo "The VPS_SSH_KEY secret is not set" >&2; exit 1; }
+          [ -n "$VPS_HOST" ] || { echo "The VPS_HOST variable is not set" >&2; exit 1; }
           install -d -m 700 ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          if [ -n "$VPS_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -T 15 -H "$VPS_HOST" > ~/.ssh/known_hosts
+            [ -s ~/.ssh/known_hosts ] || { echo "ssh-keyscan returned no host key for $VPS_HOST" >&2; exit 1; }
+          fi
           printf 'Host *\n  IdentityFile ~/.ssh/deploy_key\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n' > ~/.ssh/config
+          echo "DEPLOY_HOST=${VPS_USER:-ubuntu}@$VPS_HOST" >> "$GITHUB_ENV"
 
       - run: ./deploy.sh
