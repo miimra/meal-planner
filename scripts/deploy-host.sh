@@ -5,6 +5,8 @@ root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$root"
 
 expected_commit="${1:-}"
+expected_version="${2:-}"
+built_at="${3:-}"
 volume="meal-planner-pb-data"
 container="meal-planner"
 backup_dir="$root/backups"
@@ -13,8 +15,16 @@ for command_name in git docker curl awk; do
   command -v "$command_name" >/dev/null 2>&1 || { echo "$command_name is required" >&2; exit 1; }
 done
 docker compose version >/dev/null 2>&1 || { echo "Docker Compose v2 is required" >&2; exit 1; }
-[[ -n "$expected_commit" && "$(git rev-parse HEAD)" == "$expected_commit" ]] || {
+[[ "$expected_commit" =~ ^[0-9a-f]{40}$ && "$(git rev-parse HEAD)" == "$expected_commit" ]] || {
   echo "The production checkout does not match the requested commit" >&2
+  exit 1
+}
+[[ "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\+[0-9]+\.[0-9a-f]{7,40})?$ ]] || {
+  echo "A tag-derived release version is required" >&2
+  exit 1
+}
+[[ "$built_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || {
+  echo "A UTC ISO 8601 build timestamp is required" >&2
   exit 1
 }
 git diff --quiet && git diff --cached --quiet || {
@@ -54,7 +64,9 @@ find "$backup_dir" -maxdepth 1 -type f -name "$volume-*.tar.gz" -printf '%T@ %p\
   | while IFS= read -r old_backup; do [[ -z "$old_backup" ]] || rm -f -- "$old_backup"; done
 echo "PocketBase backup created: $backup"
 
-MEAL_PLANNER_IMAGE="$image" docker compose build meal-planner
+MEAL_PLANNER_IMAGE="$image" MEAL_PLANNER_VERSION="$expected_version" \
+  MEAL_PLANNER_COMMIT="$expected_commit" MEAL_PLANNER_BUILT_AT="$built_at" \
+  docker compose build meal-planner
 
 rollback() {
   echo "Deployment failed; restoring meal-planner:rollback" >&2
