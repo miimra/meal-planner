@@ -209,15 +209,12 @@ not call Telegram or consume paid AI tokens.
 ## Production
 
 Production is a normal checkout of the `main` branch at
-`/srv/meal-planner`. From a clean development checkout whose `main`
-commit has already been pushed, run:
-
-```bash
-./deploy.sh
-```
+`/srv/meal-planner`. Every push to `main` deploys it through the `Deploy`
+GitHub Actions workflow, which runs `./deploy.sh`; see
+[DEPLOYMENT.md](DEPLOYMENT.md) for the settings it needs.
 
 `deploy.sh` verifies the exact `origin/main` commit, runs tests and a production
-build locally, and then updates the production checkout over SSH. The host
+build, and then updates the production checkout over SSH. The host
 helper backs up the external `meal-planner-pb-data` volume, builds that exact
 commit through `docker-compose.yml`, recreates the container, and checks both
 the API and static app. If startup fails, it restores the previously running
