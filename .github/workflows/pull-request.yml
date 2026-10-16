@@ -1,0 +1,48 @@
+name: Pull request checks
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    env:
+      POCKETBASE_VERSION: 0.39.10
+      POCKETBASE_BIN: ${{ github.workspace }}/.pocketbase/pocketbase
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install PocketBase
+        run: |
+          mkdir -p "$(dirname "$POCKETBASE_BIN")"
+          curl --fail --location --retry 3 --output /tmp/pocketbase.zip \
+            "https://github.com/pocketbase/pocketbase/releases/download/v${POCKETBASE_VERSION}/pocketbase_${POCKETBASE_VERSION}_linux_amd64.zip"
+          unzip -q /tmp/pocketbase.zip pocketbase -d "$(dirname "$POCKETBASE_BIN")"
+          chmod +x "$POCKETBASE_BIN"
+      - run: npm test
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
