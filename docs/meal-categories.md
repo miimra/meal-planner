@@ -12,6 +12,11 @@ eligible theme. The `notes` field carries example dishes and is shown to the
 household on the web app's Categories page and given to the model as a
 selection constraint.
 
+To check the active categories, open `/categories` in the running web app.
+That page reads the current names, cooking times, and notes from PocketBase's
+`categories` collection. Use it to compare the live values with the reference
+below; editing this document alone does not update the database.
+
 | ID | Emoji | English | Persian | Style | Effort | Examples |
 | ---: | :---: | --- | --- | --- | --- | --- |
 | 1 | 🍳 | Simple Pan Meals | غذای ساده تابه‌ای | Iranian | Quick, 15–35 min | Omelette, tomato omelette, kuku sabzi, kuku sibzamini, bandari, frozen falafel with tomato, tomato-eggplant-potato skillet. |
