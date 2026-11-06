@@ -107,6 +107,16 @@ An image rollback does not change PocketBase data. To restore data, stop the
 service and deliberately select a timestamped archive under
 `/srv/meal-planner/backups`. Data restoration is intentionally not automated.
 
+## MCP endpoint
+
+`POST /api/mcp` is enabled only when `MCP_AUTH_TOKEN` (at least 32 characters)
+is present in `/srv/meal-planner/.env`; otherwise it answers 404 and startup logs
+one "MCP endpoint disabled" line. Changing the token requires recreating the
+container. Verify with `curl -i http://127.0.0.1:8091/api/mcp -X POST`, which
+should return 401 when enabled and 404 when disabled. Block `/api/mcp` at
+Cloudflare for everything except the agent that needs it (see the README "MCP
+server" section). Never paste the token into deployment logs.
+
 ## Secret handling
 
 Never commit `.env`, print its contents, or copy credentials into deployment

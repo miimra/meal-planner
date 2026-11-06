@@ -50,6 +50,33 @@ production server with mode `0600`. Docker Compose loads that file when recreati
 the container. Suggestion photos are looked up from Wikimedia thumbnails, so
 no image model or extra key is needed.
 
+## MCP server
+
+The app exposes an authenticated [Model Context Protocol](https://modelcontextprotocol.io)
+endpoint for planning agents: `POST /api/mcp` (Streamable HTTP, stateless,
+JSON responses only, no SSE).
+
+Set `MCP_AUTH_TOKEN` to a random value of at least 32 characters, for example
+`openssl rand -hex 32`. When it is unset or shorter than 32 characters the
+endpoint is disabled: every request gets `404` and startup logs one line saying
+MCP is disabled. Clients authenticate with `Authorization: Bearer <token>`;
+missing or wrong tokens get an identical `401`. Request bodies are limited to
+64 KB (`413`) and `GET /api/mcp` returns `405`.
+
+```bash
+curl -s http://127.0.0.1:8091/api/mcp \
+  -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+# {"jsonrpc":"2.0","id":1,"result":{}}
+```
+
+Recommendation: the MCP client connects over the tunnel, but the endpoint does
+not need to be reachable from the public internet by anyone else. Block
+`/api/mcp` at the edge (for example a Cloudflare WAF rule or Access policy) for
+everything except the agent's network or identity, in addition to the bearer
+token.
+
 ## Telegram setup
 
 1. Create the bot with BotFather and install its token as
