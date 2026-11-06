@@ -474,6 +474,7 @@ function saveFeedback(app, occurrenceId, memberId, rating) {
 module.exports = {
   acceptSuggestion,
   assignmentFor,
+  categoryValue,
   dishByName,
   lookupIngredients,
   normalizeDishName,
