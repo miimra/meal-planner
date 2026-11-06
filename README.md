@@ -71,6 +71,21 @@ curl -s http://127.0.0.1:8091/api/mcp \
 # {"jsonrpc":"2.0","id":1,"result":{}}
 ```
 
+### Tools
+
+`initialize` returns server instructions describing the planning rules. All
+tools are read-only; start with `get_context`, then `get_week`.
+
+- `get_context` - today's date, timezone, time, planning week start and rotation week.
+- `get_week` - the dinner plan for one Monday-Sunday week with slot statuses.
+- `get_plan` - the dinner plan for a range of dates.
+- `list_categories` - the dinner categories.
+- `get_rotation` - the two-week category rotation.
+- `list_dishes` - known dishes, optionally filtered.
+- `get_dish` - one dish with its details.
+- `get_history` - what was cooked or eaten out on past dates.
+- `get_household` - household members and their preferences.
+
 Recommendation: the MCP client connects over the tunnel, but the endpoint does
 not need to be reachable from the public internet by anyone else. Block
 `/api/mcp` at the edge (for example a Cloudflare WAF rule or Access policy) for

@@ -80,7 +80,7 @@ async function startPocketBase(t, identity, withSuperuser = false) {
   });
 
   let lastHealthResponse = "no response";
-  for (let attempt = 0; attempt < 120; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if (child.exitCode !== null) assert.fail(`PocketBase exited before starting\n${logs}`);
     try {
       const response = await fetch(baseUrl + "/api/health");

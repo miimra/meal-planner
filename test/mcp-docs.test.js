@@ -17,3 +17,10 @@ test("MCP documentation covers README, .env.example and DEPLOYMENT", () => {
   assert.match(read(".env.example"), /^MCP_AUTH_TOKEN=/m);
   assert.match(read("DEPLOYMENT.md"), /MCP/);
 });
+
+test("README MCP section lists every planned tool", () => {
+  const readme = read("README.md");
+  for (const tool of ["get_context", "get_week", "get_plan", "list_categories", "get_rotation", "list_dishes", "get_dish", "get_history", "get_household"]) {
+    assert.match(readme, new RegExp("^- `" + tool + "` - .+", "m"), tool);
+  }
+});

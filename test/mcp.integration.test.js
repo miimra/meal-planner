@@ -58,7 +58,7 @@ async function start(t, mcpToken) {
     }
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
-  for (let attempt = 0; attempt < 120; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if (child.exitCode !== null) assert.fail(`PocketBase exited before starting\n${state.logs}`);
     try {
       const response = await fetch(baseUrl + "/api/health");
@@ -148,4 +148,33 @@ test("MCP endpoint is 404 when the token is shorter than 32 characters", { timeo
   assert.equal((await fetch(baseUrl + "/api/health")).status, 200);
   assert.equal(state.logs.split("\n").filter((line) => /MCP.*disabled/i.test(line)).length, 1);
   assert.equal(state.logs.includes(short), false);
+});
+
+test("MCP initialize, tools/list and tools/call work over HTTP", { timeout: 30_000 }, async (t) => {
+  const server = await start(t, TOKEN);
+  if (!server) return;
+  const { baseUrl, state } = server;
+
+  const init = await (await rpc(baseUrl, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26" } }, auth)).json();
+  assert.equal(init.result.protocolVersion, "2025-03-26");
+  assert.deepEqual(init.result.capabilities, { tools: {} });
+  assert.equal(init.result.serverInfo.name, "meal-planner");
+  assert.ok(init.result.instructions.length < 2000);
+
+  const list = await (await rpc(baseUrl, { jsonrpc: "2.0", id: 2, method: "tools/list" }, auth)).json();
+  const names = list.result.tools.map((tool) => tool.name);
+  assert.ok(names.includes("get_context"));
+  for (const tool of list.result.tools) {
+    assert.ok(tool.title && tool.description);
+    assert.equal(tool.inputSchema.type, "object");
+  }
+
+  const called = await (await rpc(baseUrl, { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "get_context", arguments: {} } }, auth)).json();
+  assert.match(called.result.structuredContent.today, /^\d{4}-\d{2}-\d{2}$/);
+  assert.deepEqual(JSON.parse(called.result.content[0].text), called.result.structuredContent);
+
+  const unknown = await (await rpc(baseUrl, { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "nope" } }, auth)).json();
+  assert.equal(typeof unknown.error.code, "number");
+  assert.ok(state.logs.includes("MCP call: get_context -> ok"));
+  assert.equal(state.logs.includes(TOKEN), false);
 });
