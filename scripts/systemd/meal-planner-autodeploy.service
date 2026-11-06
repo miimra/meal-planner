@@ -1,0 +1,11 @@
+[Unit]
+Description=Deploy the newest meal-planner commit from main (pull-based)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/srv/meal-planner
+ExecStart=/srv/meal-planner/scripts/autodeploy.sh
+TimeoutStartSec=30min

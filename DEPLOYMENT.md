@@ -17,6 +17,33 @@ serves both the bot API and the statically exported Next.js overview.
 
 ## Deploy
 
+### Automatic (default)
+
+Production deploys itself. `meal-planner-autodeploy.timer` runs
+`scripts/autodeploy.sh` every 5 minutes as `ubuntu`. When `origin/main` has a
+new commit, the script fast-forwards `/srv/meal-planner`, derives the release
+version from the nearest `vX.Y.Z` tag, and runs `scripts/deploy-host.sh`. That
+script makes the backup, builds the image, checks health, restores the previous
+image if needed, and registers the Telegram webhook.
+A failed deploy also puts the checkout back on the previous commit and is not
+retried until a newer commit lands. Tests and the build are checked before merge
+(the pull request workflow and Conveyor's local check), not on the server.
+
+```bash
+journalctl -u meal-planner-autodeploy -n 50     # what the last runs did
+systemctl list-timers meal-planner-autodeploy.timer
+```
+
+Install or update the units after changing them in `scripts/systemd/`:
+
+```bash
+sudo cp /srv/meal-planner/scripts/systemd/meal-planner-autodeploy.* /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now meal-planner-autodeploy.timer
+```
+
+### Manual
+
 Commit and push `main`, then run this from the development checkout:
 
 ```bash
