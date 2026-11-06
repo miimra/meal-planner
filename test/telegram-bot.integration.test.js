@@ -188,7 +188,7 @@ async function startMockServer() {
 }
 
 async function waitForServer(baseUrl, child) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if (child.exitCode !== null) throw new Error("PocketBase exited before becoming ready");
     try {
       const response = await fetch(baseUrl + "/api/health");
