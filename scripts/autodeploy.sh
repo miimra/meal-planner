@@ -46,8 +46,8 @@ main() {
   log "deploying ${prev:0:12} -> ${new:0:12}"
   git merge --quiet --ff-only "$new" || { log "fast-forward failed"; exit 1; }
 
-  version=$(scripts/release-version.sh "$new") && built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-    && scripts/deploy-host.sh "$new" "$version" "$built_at"
+  version=$(bash scripts/release-version.sh "$new") && built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+    && bash scripts/deploy-host.sh "$new" "$version" "$built_at"
   status=$?
   if [ "$status" -eq 0 ]; then
     rm -f .git/autodeploy-failed
