@@ -16,8 +16,8 @@ test("a message without id gets no response (HTTP 202, empty body)", () => {
   assert.equal(dispatcher.handle({ jsonrpc: "2.0", method: "ping" }, {}), null);
 });
 
-test("unknown method returns -32601, including not-yet-implemented MCP methods", () => {
-  for (const method of ["nope", "initialize", "tools/list", "tools/call", "constructor", "__proto__"]) {
+test("unknown method returns -32601", () => {
+  for (const method of ["nope", "constructor", "__proto__"]) {
     const response = dispatcher.handle({ jsonrpc: "2.0", id: 1, method }, {});
     assert.equal(response.error.code, -32601, method);
     assert.equal(response.id, 1);

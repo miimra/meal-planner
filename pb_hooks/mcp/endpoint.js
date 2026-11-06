@@ -32,7 +32,7 @@ function handleRequest(e) {
   }
   if (text.length > MAX_BODY_BYTES) return e.json(413, { error: "payload_too_large" });
 
-  const result = dispatcher.handleText(text, {});
+  const result = dispatcher.handleText(text, { app: $app });
   if (result.body === undefined) return e.noContent(202);
   return e.json(result.status, result.body);
 }
