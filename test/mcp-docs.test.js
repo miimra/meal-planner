@@ -20,7 +20,7 @@ test("MCP documentation covers README, .env.example and DEPLOYMENT", () => {
 
 test("README MCP section lists every planned tool", () => {
   const readme = read("README.md");
-  for (const tool of ["get_context", "get_week", "get_plan", "list_categories", "get_rotation", "list_dishes", "get_dish", "get_history", "get_household"]) {
+  for (const tool of ["get_context", "get_week", "get_plan", "list_categories", "get_rotation", "list_dishes", "get_dish", "get_history", "get_household", "update_category", "create_category", "upsert_dish"]) {
     assert.match(readme, new RegExp("^- `" + tool + "` - .+", "m"), tool);
   }
 });
