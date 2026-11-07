@@ -80,9 +80,10 @@ test("every registered tool has title, description, annotations and property des
   }
 });
 
-test("every registered tool is read-only and closed-world", () => {
+test("every registered tool is closed-world and read-only unless it is a catalog write tool", () => {
+  const writers = ["update_category", "create_category", "upsert_dish"];
   for (const t of registry) {
-    assert.equal(t.annotations.readOnlyHint, true, t.name);
+    assert.equal(t.annotations.readOnlyHint, writers.indexOf(t.name) === -1, t.name);
     assert.equal(t.annotations.openWorldHint, false, t.name);
   }
 });

@@ -3,6 +3,8 @@
 const json = require(`${__hooks}/shared/json.js`);
 const { ToolError } = require(`${__hooks}/mcp/errors.js`);
 const { requireDate } = require(`${__hooks}/mcp/args.js`);
+const { runAction } = require(`${__hooks}/mcp/actions.js`);
+const service = require(`${__hooks}/meal_planning/service.js`);
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -128,7 +130,49 @@ function getHousehold(app) {
   };
 }
 
+function categoryFields(args) {
+  const fields = Object.assign({}, args);
+  delete fields.catId;
+  return fields;
+}
+
+function updateCategory(app, args) {
+  const category = runAction("update_category", args.catId, function () {
+    return service.updateCategory(app, args.catId, categoryFields(args));
+  }, function (record) { return { id: String(record.getInt("catId")), result: "ok" }; });
+  return service.categoryValue(category);
+}
+
+function createCategory(app, args) {
+  const category = runAction("create_category", "new", function () {
+    return service.createCategory(app, args);
+  }, function (record) { return { id: String(record.getInt("catId")), result: "created" }; });
+  return service.categoryValue(category);
+}
+
+function upsertDish(app, args) {
+  const saved = runAction("upsert_dish", args.id || "new", function () {
+    return service.upsertDish(app, args);
+  }, function (outcome) { return { id: outcome.record.id, result: outcome.created ? "created" : "updated" }; });
+  const fields = dishFields(saved.record, categoryIndex(app));
+  fields.instructions = strings(saved.record, "instructions");
+  return fields;
+}
+
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false };
+const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
+const CATEGORY_PROPERTIES = {
+  name_en: { type: "string", description: "English name, must not be empty." },
+  name_fa: { type: "string", description: "Persian name, must not be empty." },
+  emoji: { type: "string", description: "Emoji shown with the category, must not be empty." },
+  style: { type: "string", enum: ["iranian", "international", "either"], description: "Cuisine style." },
+  effort: { type: "string", enum: ["quick", "medium", "medium-heavy", "heavy"], description: "Overall effort level." },
+  effort_min: { type: "integer", description: "Minimum minutes of effort, 0 to 1440, not above effort_max." },
+  effort_max: { type: "integer", description: "Maximum minutes of effort, 0 to 1440, not below effort_min." },
+  weekend_only: { type: "boolean", description: "True when the category only suits weekends." },
+  prep_ahead: { type: "boolean", description: "True when the category usually needs preparation ahead." },
+  notes: { type: "string", description: "Free-text guidance for the category; empty string clears it." },
+};
 const EMPTY_SCHEMA = { type: "object", properties: {}, additionalProperties: false };
 
 module.exports = [{
@@ -182,4 +226,52 @@ module.exports = [{
   inputSchema: EMPTY_SCHEMA,
   annotations: READ_ONLY,
   handler: getHousehold,
+}, {
+  name: "update_category",
+  title: "Update category",
+  description: "Partially updates one dinner category: only the fields you pass change, the catId never does. Fails with a validation message (and changes nothing) for unknown fields, wrongly typed values or effort_min greater than effort_max. Returns the category as list_categories shows it.",
+  inputSchema: {
+    type: "object",
+    properties: Object.assign({ catId: { type: "integer", description: "The catId of the category to update, as returned by list_categories." } }, CATEGORY_PROPERTIES),
+    required: ["catId"],
+    additionalProperties: false,
+  },
+  annotations: WRITE,
+  handler: updateCategory,
+}, {
+  name: "create_category",
+  title: "Create category",
+  description: "Creates a dinner category with the next free catId (highest existing catId + 1). Only name_en is required; name_fa defaults to name_en, style to either, effort to medium, effort_min/effort_max to 15/60. Returns the new category as list_categories shows it.",
+  inputSchema: {
+    type: "object",
+    properties: CATEGORY_PROPERTIES,
+    required: ["name_en"],
+    additionalProperties: false,
+  },
+  annotations: WRITE,
+  handler: createCategory,
+}, {
+  name: "upsert_dish",
+  title: "Create or update dish",
+  description: "Creates a dish (no id; name required) or partially updates an existing one (id; only the fields you pass change). Dish names are unique ignoring case: a name used by another dish fails with name_taken and changes nothing. catId is the primary category and categoryIds the related ones, both as catIds from list_categories. Returns the dish as get_dish shows it.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      id: { type: "string", description: "Id of the dish to update; omit to create a new dish." },
+      name: { type: "string", description: "Dish name, unique ignoring case; required when creating." },
+      catId: { type: "integer", description: "Primary category catId." },
+      categoryIds: { type: "array", items: { type: "integer" }, description: "Related category catIds (replaces the current list)." },
+      ingredients: { type: "array", items: { type: "string" }, description: "Ingredient lines (replaces the current list)." },
+      instructions: { type: "array", items: { type: "string" }, description: "Recipe steps (replaces the current list)." },
+      prep_minutes: { type: "integer", description: "Preparation minutes, 0 to 1440." },
+      cook_minutes: { type: "integer", description: "Cooking minutes, 0 to 1440." },
+      difficulty: { type: "string", enum: ["easy", "medium", "hard"], description: "Difficulty." },
+      cuisine: { type: "string", description: "Cuisine label, at most 120 characters." },
+      tags: { type: "array", items: { type: "string" }, description: "Tags such as meal:dinner (replaces the current list)." },
+      notes: { type: "string", description: "Free-text notes; empty string clears them." },
+    },
+    additionalProperties: false,
+  },
+  annotations: WRITE,
+  handler: upsertDish,
 }];

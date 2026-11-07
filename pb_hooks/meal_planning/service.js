@@ -471,8 +471,211 @@ function saveFeedback(app, occurrenceId, memberId, rating) {
   return feedback;
 }
 
+function domainError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  error.domain = true;
+  return error;
+}
+
+const CATEGORY_STYLES = ["iranian", "international", "either"];
+const CATEGORY_EFFORTS = ["quick", "medium", "medium-heavy", "heavy"];
+const DISH_DIFFICULTIES = ["easy", "medium", "hard"];
+const CATEGORY_TEXT = ["name_en", "name_fa", "emoji", "notes"];
+const CATEGORY_FIELDS = CATEGORY_TEXT.concat(["style", "effort", "effort_min", "effort_max", "weekend_only", "prep_ahead"]);
+const MAX_MINUTES = 1440;
+
+function invalid(message) {
+  return domainError("invalid_params", message);
+}
+
+function checkCategoryFields(fields) {
+  const out = {};
+  for (const key of Object.keys(fields)) {
+    if (CATEGORY_FIELDS.indexOf(key) === -1) throw invalid(`unknown field ${key.slice(0, 40)}`);
+    const value = fields[key];
+    if (value === undefined) continue;
+    if (CATEGORY_TEXT.indexOf(key) !== -1) {
+      if (typeof value !== "string") throw invalid(`${key} must be a string`);
+      out[key] = value.trim();
+      if (key !== "notes" && !out[key]) throw invalid(`${key} must not be empty`);
+    } else if (key === "style" || key === "effort") {
+      const allowed = key === "style" ? CATEGORY_STYLES : CATEGORY_EFFORTS;
+      if (allowed.indexOf(value) === -1) throw invalid(`${key} must be one of: ${allowed.join(", ")}`);
+      out[key] = value;
+    } else if (key === "effort_min" || key === "effort_max") {
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > MAX_MINUTES) {
+        throw invalid(`${key} must be an integer between 0 and ${MAX_MINUTES}`);
+      }
+      out[key] = value;
+    } else {
+      if (typeof value !== "boolean") throw invalid(`${key} must be a boolean`);
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function sortedCategories(app) {
+  return app.findRecordsByFilter("categories", "", "catId", 0, 0);
+}
+
+function applyFields(record, fields) {
+  for (const key of Object.keys(fields)) record.set(key, fields[key]);
+}
+
+// Partial update of one category addressed by its catId; the catId itself is
+// never changed. Validation happens before anything is written.
+function updateCategory(app, catId, input) {
+  if (typeof catId !== "number" || !Number.isInteger(catId)) throw invalid("catId must be an integer");
+  if (Object.prototype.hasOwnProperty.call(input, "catId")) throw invalid("catId cannot be changed");
+  const fields = checkCategoryFields(input);
+  let failure = null;
+  let id = "";
+  app.runInTransaction((tx) => {
+    const record = sortedCategories(tx).find((item) => item.getInt("catId") === catId);
+    if (!record) { failure = domainError("not_found", "No category with that catId"); return; }
+    const min = fields.effort_min === undefined ? record.getInt("effort_min") : fields.effort_min;
+    const max = fields.effort_max === undefined ? record.getInt("effort_max") : fields.effort_max;
+    if (min > max) { failure = invalid("effort_min must not be greater than effort_max"); return; }
+    applyFields(record, fields);
+    tx.save(record);
+    id = record.id;
+  });
+  if (failure) throw failure;
+  return app.findRecordById("categories", id);
+}
+
+// Creates a category with the next free catId (max + 1). Only name_en is
+// required; the other required columns get neutral defaults.
+function createCategory(app, input) {
+  const fields = checkCategoryFields(input);
+  if (!fields.name_en) throw invalid("name_en is required");
+  const merged = Object.assign({
+    name_fa: fields.name_en, emoji: "🍽️", style: "either", effort: "medium",
+    effort_min: 15, effort_max: 60, weekend_only: false, prep_ahead: false, notes: "",
+  }, fields);
+  if (merged.effort_min > merged.effort_max) throw invalid("effort_min must not be greater than effort_max");
+  let id = "";
+  app.runInTransaction((tx) => {
+    const all = sortedCategories(tx);
+    let max = 0;
+    for (const item of all) max = Math.max(max, item.getInt("catId"));
+    const record = new Record(tx.findCollectionByNameOrId("categories"));
+    record.set("catId", max + 1);
+    applyFields(record, merged);
+    tx.save(record);
+    id = record.id;
+  });
+  return app.findRecordById("categories", id);
+}
+
+const DISH_FIELDS = ["id", "name", "catId", "categoryIds", "ingredients", "instructions", "prep_minutes", "cook_minutes", "difficulty", "cuisine", "tags", "notes"];
+
+function stringList(value, key) {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) throw invalid(`${key} must be an array of strings`);
+  return value.map((item) => item.trim()).filter(Boolean);
+}
+
+function checkDishFields(input) {
+  const out = {};
+  for (const key of Object.keys(input)) {
+    if (DISH_FIELDS.indexOf(key) === -1) throw invalid(`unknown field ${key.slice(0, 40)}`);
+    const value = input[key];
+    if (value === undefined || key === "id") continue;
+    if (key === "name") {
+      if (typeof value !== "string") throw invalid("name must be a string");
+      out.name = normalizeDishName(value);
+      if (!out.name) throw invalid("name must not be empty");
+    } else if (key === "catId") {
+      if (typeof value !== "number" || !Number.isInteger(value)) throw invalid("catId must be an integer");
+      out.catId = value;
+    } else if (key === "categoryIds") {
+      if (!Array.isArray(value) || value.some((item) => typeof item !== "number" || !Number.isInteger(item))) {
+        throw invalid("categoryIds must be an array of integers");
+      }
+      out.categoryIds = value.filter((item, index) => value.indexOf(item) === index);
+    } else if (key === "ingredients" || key === "instructions" || key === "tags") {
+      out[key] = stringList(value, key);
+    } else if (key === "prep_minutes" || key === "cook_minutes") {
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > MAX_MINUTES) {
+        throw invalid(`${key} must be an integer between 0 and ${MAX_MINUTES}`);
+      }
+      out[key] = value;
+    } else if (key === "difficulty") {
+      if (DISH_DIFFICULTIES.indexOf(value) === -1) throw invalid(`difficulty must be one of: ${DISH_DIFFICULTIES.join(", ")}`);
+      out.difficulty = value;
+    } else {
+      if (typeof value !== "string") throw invalid(`${key} must be a string`);
+      out[key] = value.trim();
+      if (key === "cuisine" && out[key].length > 120) throw invalid("cuisine must be at most 120 characters");
+    }
+  }
+  return out;
+}
+
+// Creates a dish (no id) or partially updates one (id). A name already used by
+// another dish (ignoring case) is refused with name_taken.
+function upsertDish(app, input) {
+  const hasId = input.id !== undefined;
+  if (hasId && (typeof input.id !== "string" || !input.id)) throw invalid("id must be a non-empty string");
+  const fields = checkDishFields(input);
+  if (!hasId && !fields.name) throw invalid("name is required to create a dish");
+  let failure = null;
+  let id = "";
+  let created = false;
+  app.runInTransaction((tx) => {
+    const dishes = tx.findRecordsByFilter("dishes", "", "name", 0, 0);
+    let record = null;
+    if (hasId) {
+      record = dishes.find((item) => item.id === input.id);
+      if (!record) { failure = domainError("not_found", "No dish with that id"); return; }
+    }
+    if (fields.name !== undefined) {
+      const wanted = fields.name.toLowerCase();
+      const clash = dishes.find((item) => item.id !== (record && record.id) && item.getString("name").trim().toLowerCase() === wanted);
+      if (clash) { failure = domainError("name_taken", "name_taken: another dish is already named that"); return; }
+    }
+    const categories = sortedCategories(tx);
+    const relationFor = (catId) => categories.find((item) => item.getInt("catId") === catId);
+    const relation = [];
+    if (fields.categoryIds !== undefined) {
+      for (const catId of fields.categoryIds) {
+        const category = relationFor(catId);
+        if (!category) { failure = invalid(`categoryIds contains unknown catId ${catId}`); return; }
+        relation.push(category.id);
+      }
+    }
+    let primary = null;
+    if (fields.catId !== undefined) {
+      primary = relationFor(fields.catId);
+      if (!primary) { failure = invalid(`unknown catId ${fields.catId}`); return; }
+    }
+    created = !record;
+    if (created) {
+      record = new Record(tx.findCollectionByNameOrId("dishes"));
+      record.set("lifecycle", "regular");
+    }
+    for (const key of ["name", "ingredients", "instructions", "prep_minutes", "cook_minutes", "difficulty", "cuisine", "tags", "notes"]) {
+      if (fields[key] !== undefined) record.set(key, fields[key]);
+    }
+    if (primary) {
+      record.set("catId", primary.getInt("catId"));
+      if (fields.categoryIds === undefined && created) relation.push(primary.id);
+    }
+    if (fields.categoryIds !== undefined || (created && primary)) record.set("categories", relation);
+    tx.save(record);
+    id = record.id;
+  });
+  if (failure) throw failure;
+  return { record: app.findRecordById("dishes", id), created };
+}
+
 module.exports = {
   acceptSuggestion,
+  createCategory,
+  updateCategory,
+  upsertDish,
   assignmentFor,
   categoryValue,
   dishByName,
