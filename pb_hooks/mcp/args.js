@@ -17,6 +17,8 @@ function requireDate(value, name) {
 }
 
 function typeOk(type, value) {
+  if (Array.isArray(type)) return type.some(function (t) { return t === "null" ? value === null : typeOk(t, value); });
+  if (type === "null") return value === null;
   if (type === "string") return typeof value === "string";
   if (type === "integer") return typeof value === "number" && Number.isInteger(value);
   if (type === "number") return typeof value === "number" && isFinite(value);
@@ -42,7 +44,7 @@ function validateArgs(schema, args) {
       throw new ToolError(`unknown argument ${key.slice(0, 40)}`, "invalid_params");
     }
     const def = props[key];
-    if (def.type && !typeOk(def.type, args[key])) throw new ToolError(`${key} must be of type ${def.type}`, "invalid_params");
+    if (def.type && !typeOk(def.type, args[key])) throw new ToolError(`${key} must be of type ${[].concat(def.type).join(" or ")}`, "invalid_params");
     if (def.enum && def.enum.indexOf(args[key]) === -1) throw new ToolError(`${key} must be one of: ${def.enum.join(", ")}`, "invalid_params");
   }
   return args;

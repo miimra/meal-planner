@@ -80,10 +80,17 @@ test("every registered tool has title, description, annotations and property des
   }
 });
 
-test("every registered tool is closed-world and read-only unless it is a catalog write tool", () => {
-  const writers = ["update_category", "create_category", "upsert_dish"];
+const WRITE_TOOLS = ["update_category", "create_category", "upsert_dish", "set_dinner", "set_dinner_status", "clear_dinner", "set_day_category"];
+const PLAN_WRITE_TOOLS = ["set_dinner", "set_dinner_status", "clear_dinner", "set_day_category"];
+test("only the write tools are not read-only, and all tools are closed-world", () => {
+  const listed = call("tools/list").result.tools;
+  for (const t of listed) {
+    assert.equal(t.annotations.readOnlyHint, !WRITE_TOOLS.includes(t.name), t.name);
+    assert.equal(t.annotations.destructiveHint === true, t.name === "clear_dinner", t.name);
+    if (PLAN_WRITE_TOOLS.includes(t.name)) assert.equal(t.inputSchema.type, "object");
+  }
+  assert.equal(listed.filter((t) => PLAN_WRITE_TOOLS.includes(t.name)).length, 4);
   for (const t of registry) {
-    assert.equal(t.annotations.readOnlyHint, writers.indexOf(t.name) === -1, t.name);
     assert.equal(t.annotations.openWorldHint, false, t.name);
   }
 });
