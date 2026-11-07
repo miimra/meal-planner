@@ -75,9 +75,9 @@ curl -s http://127.0.0.1:8091/api/mcp \
 
 `initialize` returns server instructions describing the planning rules. Start
 with `get_context`, then `get_week`. The read tools are marked read-only; the
-write tools (last three below) have `readOnlyHint: false`, each call runs in one
+write tools (last seven below) have `readOnlyHint: false`, each call runs in one
 transaction and logs `MCP action: <tool> <id> -> <result>` (free text capped at
-200 characters).
+200 characters). Dates before today are rejected by the plan tools with `past_date`.
 
 - `get_context` - today's date, timezone, time, planning week start and rotation week.
 - `get_week` - the dinner plan for one Monday-Sunday week with slot statuses.
@@ -91,6 +91,10 @@ transaction and logs `MCP action: <tool> <id> -> <result>` (free text capped at
 - `update_category` - partially update a category by `catId` (never changed); rejects unknown fields, wrong types and `effort_min` above `effort_max`.
 - `create_category` - create a category with the next free `catId` (max + 1); only `name_en` is required.
 - `upsert_dish` - create a dish (no `id`) or partially update one (`id`); a name used by another dish fails with `name_taken`.
+- `set_dinner` - plan a dinner with an existing dish (id or exact name) or a new one.
+- `set_dinner_status` - mark a dinner leftovers, buy_food, eating_out or skipped.
+- `clear_dinner` - remove a dinner plan (not when it has cooked history).
+- `set_day_category` - override a day's category, or remove it with null.
 
 Recommendation: the MCP client connects over the tunnel, but the endpoint does
 not need to be reachable from the public internet by anyone else. Block

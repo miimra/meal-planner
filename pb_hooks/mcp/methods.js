@@ -35,8 +35,10 @@ function logCall(name, outcome) {
   console.log(`MCP call: ${String(name).slice(0, 100)} -> ${outcome}`);
 }
 
-function failure(message) {
-  return { content: [{ type: "text", text: message }], isError: true };
+function failure(message, code) {
+  const result = { content: [{ type: "text", text: message }], isError: true };
+  if (code) result.structuredContent = { code: code, message: message };
+  return result;
 }
 
 function toolsCall(params, context) {
@@ -54,7 +56,7 @@ function toolsCall(params, context) {
   } catch (error) {
     if (error && error.name === "ToolError") {
       logCall(name, `error ${error.code}`);
-      return failure(error.message);
+      return failure(error.message, error.code);
     }
     logCall(name, "error internal");
     return failure("Internal error while running the tool");

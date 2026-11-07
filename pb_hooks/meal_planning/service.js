@@ -379,6 +379,10 @@ function dishByName(app, name) {
   return name ? first(app, "dishes", "name = {:name}", { name }) : null;
 }
 
+function dishExists(app, id) {
+  return Boolean(optionalById(app, "dishes", id));
+}
+
 // A dish the household types in has no recipe behind it, so the model supplies
 // the ingredients the shopping list needs. It answers known:false rather than
 // inventing a recipe for a name it does not recognise.
@@ -388,7 +392,31 @@ function lookupIngredients(date, meal, dishName) {
   return openrouter.ingredients(name, calendar.servingProfile(date, calendar.assertMeal(meal)));
 }
 
-function setManualDish(app, date, meal, dishName, ingredients) {
+// Shared by setManualDish and setExistingDish: assigns the dish to the slot and
+// rejects that slot's pending suggestions. Runs inside the caller's transaction.
+function assignDish(tx, date, meal, dish, ingredients, category, current, source) {
+  if (ingredients.length) {
+    dish.set("ingredients", ingredients);
+    tx.save(dish);
+  }
+  const assignment = current || new Record(tx.findCollectionByNameOrId("meal_assignments"));
+  assignment.set("date", date);
+  assignment.set("meal", meal);
+  assignment.set("dish", dish.id);
+  assignment.set("status", "planned");
+  assignment.set("selection_source", source);
+  if (category) assignment.set("category", category.id);
+  tx.save(assignment);
+  const pending = tx.findRecordsByFilter("meal_suggestions", "date = {:date} && meal = {:meal} && outcome = 'pending'", "", 0, 0, { date, meal });
+  for (const old of pending) {
+    old.set("outcome", "rejected");
+    old.set("rejection_reason", "manual_choice");
+    tx.save(old);
+  }
+  return assignment.id;
+}
+
+function setManualDish(app, date, meal, dishName, ingredients, source) {
   calendar.parseDate(date);
   calendar.assertMeal(meal);
   const name = normalizeDishName(dishName);
@@ -399,43 +427,92 @@ function setManualDish(app, date, meal, dishName, ingredients) {
     const current = assignmentFor(tx, date, meal);
     const category = effectiveCategory(tx, date, meal, current);
     const dish = ensureDish(tx, name, category);
-    if (list.length) {
-      dish.set("ingredients", list);
-      tx.save(dish);
-    }
-    const assignment = current || new Record(tx.findCollectionByNameOrId("meal_assignments"));
-    assignment.set("date", date);
-    assignment.set("meal", meal);
-    assignment.set("dish", dish.id);
-    assignment.set("status", "planned");
-    assignment.set("selection_source", "telegram");
-    if (category) assignment.set("category", category.id);
-    tx.save(assignment);
-    assignmentId = assignment.id;
-    const pending = tx.findRecordsByFilter("meal_suggestions", "date = {:date} && meal = {:meal} && outcome = 'pending'", "", 0, 0, { date, meal });
-    for (const old of pending) {
-      old.set("outcome", "rejected");
-      old.set("rejection_reason", "manual_choice");
-      tx.save(old);
-    }
+    assignmentId = assignDish(tx, date, meal, dish, list, category, current, source || "telegram");
   });
   return app.findRecordById("meal_assignments", assignmentId);
 }
 
-function setSpecialStatus(app, date, meal, status) {
+// Plans a dish that already exists, by record id.
+function setExistingDish(app, date, meal, dishId, ingredients, source) {
+  calendar.parseDate(date);
+  calendar.assertMeal(meal);
+  const list = Array.isArray(ingredients) ? ingredients : [];
+  let assignmentId = "";
+  app.runInTransaction((tx) => {
+    const dish = optionalById(tx, "dishes", dishId);
+    if (!dish) throw new Error("dish_not_found");
+    const current = assignmentFor(tx, date, meal);
+    const category = effectiveCategory(tx, date, meal, current);
+    assignmentId = assignDish(tx, date, meal, dish, list, category, current, source || "telegram");
+  });
+  return app.findRecordById("meal_assignments", assignmentId);
+}
+
+function setSpecialStatus(app, date, meal, status, source) {
   calendar.parseDate(date);
   calendar.assertMeal(meal);
   if (["leftovers", "buy_food", "eating_out", "skipped"].indexOf(status) === -1) throw new Error("invalid_status");
-  const assignment = upsertAssignment(app, date, meal);
-  const category = effectiveCategory(app, date, meal, assignment.id ? assignment : null);
-  assignment.set("date", date);
-  assignment.set("meal", meal);
-  assignment.set("dish", null);
-  assignment.set("status", status);
-  assignment.set("selection_source", "telegram");
-  if (category) assignment.set("category", category.id);
-  app.save(assignment);
-  return assignment;
+  let assignmentId = "";
+  app.runInTransaction((tx) => {
+    const current = assignmentFor(tx, date, meal);
+    const assignment = current || new Record(tx.findCollectionByNameOrId("meal_assignments"));
+    const category = effectiveCategory(tx, date, meal, current);
+    assignment.set("date", date);
+    assignment.set("meal", meal);
+    assignment.set("dish", null);
+    assignment.set("status", status);
+    assignment.set("selection_source", source || "telegram");
+    if (category) assignment.set("category", category.id);
+    tx.save(assignment);
+    assignmentId = assignment.id;
+  });
+  return app.findRecordById("meal_assignments", assignmentId);
+}
+
+// Deletes a slot's assignment unless a cooked occurrence refers to it.
+// Returns false (and keeps the assignment) when the slot has history.
+function clearAssignment(app, date, meal) {
+  calendar.parseDate(date);
+  calendar.assertMeal(meal);
+  let cleared = true;
+  app.runInTransaction((tx) => {
+    const assignment = assignmentFor(tx, date, meal);
+    if (!assignment) return;
+    const history = tx.findRecordsByFilter("cooked_occurrences", "(date = {:date} && meal = {:meal}) || assignment = {:id}", "", 1, 0, { date, meal, id: assignment.id });
+    if (history.length || assignment.getString("status") === "cooked") {
+      cleared = false;
+      return;
+    }
+    tx.delete(assignment);
+  });
+  return cleared;
+}
+
+// Sets (category record) or removes (null) the per-day category override while
+// keeping any planned dish or status. A row created only to carry the override
+// is "unplanned"; removing the override from such a row deletes it again.
+function setCategoryOverride(app, date, meal, category, source) {
+  calendar.parseDate(date);
+  calendar.assertMeal(meal);
+  app.runInTransaction((tx) => {
+    const current = assignmentFor(tx, date, meal);
+    if (!category) {
+      if (!current) return;
+      current.set("category", null);
+      if (!current.getString("dish") && (current.getString("status") || "unplanned") === "unplanned") tx.delete(current);
+      else tx.save(current);
+      return;
+    }
+    const assignment = current || new Record(tx.findCollectionByNameOrId("meal_assignments"));
+    if (!current) {
+      assignment.set("date", date);
+      assignment.set("meal", meal);
+      assignment.set("status", "unplanned");
+      assignment.set("selection_source", source || "telegram");
+    }
+    assignment.set("category", category.id);
+    tx.save(assignment);
+  });
 }
 
 function ensureOccurrence(app, date, meal) {
@@ -677,8 +754,11 @@ module.exports = {
   updateCategory,
   upsertDish,
   assignmentFor,
+  categoryByCatId,
   categoryValue,
+  clearAssignment,
   dishByName,
+  dishExists,
   lookupIngredients,
   normalizeDishName,
   dayIsResolved,
@@ -690,6 +770,8 @@ module.exports = {
   localTimestamp,
   localWeekdayTime,
   saveFeedback,
+  setCategoryOverride,
+  setExistingDish,
   setManualDish,
   setSpecialStatus,
   slotValue,

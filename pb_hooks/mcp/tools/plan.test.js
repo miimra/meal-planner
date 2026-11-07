@@ -151,13 +151,15 @@ test("get_rotation honours from and weeks", () => {
   assert.equal(call("get_rotation", { from: "bad" }).isError, true);
 });
 
-test("tools are read-only and reuse the shared service and calendar", () => {
+test("read tools are read-only and reuse the shared service and calendar", () => {
   const source = fs.readFileSync(path.join(__dirname, "plan.js"), "utf8");
   assert.match(source, /meal_planning\/service\.js/);
   assert.match(source, /meal_planning\/calendar\.js/);
   for (const fn of ["service.weekValue", "service.dayValue", "service.categoryValue", "calendar.dinnerRotation"]) assert.ok(source.includes(fn), fn);
   assert.doesNotMatch(source, /\.(save|delete|create)\w*\(/);
   const tools = require("./plan.js");
-  assert.deepEqual(tools.map((t) => t.name), ["get_week", "get_plan", "list_categories", "get_rotation"]);
-  for (const tool of tools) assert.equal(tool.annotations.readOnlyHint, true);
+  assert.deepEqual(tools.map((t) => t.name), ["get_week", "get_plan", "list_categories", "get_rotation", "set_dinner", "set_dinner_status", "clear_dinner", "set_day_category"]);
+  for (const tool of tools.slice(0, 4)) assert.equal(tool.annotations.readOnlyHint, true);
+  for (const tool of tools.slice(4)) assert.equal(tool.annotations.readOnlyHint, false);
+  assert.equal(tools.find((t) => t.name === "clear_dinner").annotations.destructiveHint, true);
 });

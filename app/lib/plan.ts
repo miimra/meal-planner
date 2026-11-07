@@ -28,7 +28,7 @@ export interface AssignmentRecord {
   category?: string;
   dish?: string;
   status?: MealStatus | "";
-  selection_source?: "ai" | "last_meal" | "telegram" | "";
+  selection_source?: "ai" | "last_meal" | "telegram" | "mcp" | "";
 }
 
 export interface MealSlot {

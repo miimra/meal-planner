@@ -56,7 +56,116 @@ function getRotation(app, args) {
   return { start: start, weeks: weeks, days: days };
 }
 
+const SPECIAL_STATUSES = ["leftovers", "buy_food", "eating_out", "skipped"];
+const MAX_INGREDIENTS = 50;
+const MAX_TEXT = 200;
+
+function logAction(tool, date, result) {
+  console.log(`MCP action: ${tool} ${date} -> ${String(result).replace(/[\r\n]+/g, " ")}`);
+}
+
+function limited(text) {
+  return String(text).replace(/[\r\n]+/g, " ").slice(0, MAX_TEXT);
+}
+
+// Dinners are planned from today onwards; the past is history.
+function requireNotPast(date) {
+  if (date < clock.localNow().date) throw new ToolError("date is in the past; only today and later dates can be changed", "past_date");
+}
+
+function writeDate(args) {
+  const date = requireDate(args.date, "date");
+  requireNotPast(date);
+  return date;
+}
+
+function dinnerResult(app, date) {
+  return service.dayValue(app, date);
+}
+
+function setDinner(app, args) {
+  const date = writeDate(args);
+  const hasId = args.dishId !== undefined;
+  const hasName = args.dishName !== undefined;
+  if (hasId === hasName) throw new ToolError("provide exactly one of dishId or dishName", "invalid_params");
+  let ingredients = [];
+  if (args.ingredients !== undefined) {
+    if (args.ingredients.length > MAX_INGREDIENTS || args.ingredients.some(function (item) { return typeof item !== "string"; })) {
+      throw new ToolError(`ingredients must be at most ${MAX_INGREDIENTS} strings`, "invalid_params");
+    }
+    ingredients = args.ingredients.map(function (item) { return item.trim().slice(0, MAX_TEXT); }).filter(Boolean);
+  }
+  let name = "";
+  if (hasName) {
+    name = service.normalizeDishName(args.dishName);
+    if (!name) throw new ToolError("dishName must not be empty", "invalid_params");
+  } else if (!args.dishId.trim()) {
+    throw new ToolError("dishId must not be empty", "invalid_params");
+  }
+  // Expected failures are raised before the transaction: an exception thrown
+  // inside runInTransaction crosses into Go and loses its type.
+  if (hasId && !service.dishExists(app, args.dishId)) throw new ToolError("no dish with that dishId", "dish_not_found");
+  let result;
+  app.runInTransaction(function (tx) {
+    if (hasId) {
+      service.setExistingDish(tx, date, "dinner", args.dishId, ingredients, "mcp");
+    } else {
+      service.setManualDish(tx, date, "dinner", name, ingredients, "mcp");
+    }
+    result = dinnerResult(tx, date);
+  });
+  logAction("set_dinner", date, `planned ${limited(result.meals.dinner.dish.name)}`);
+  return result;
+}
+
+function setDinnerStatus(app, args) {
+  const date = writeDate(args);
+  if (SPECIAL_STATUSES.indexOf(args.status) === -1) throw new ToolError(`status must be one of: ${SPECIAL_STATUSES.join(", ")}`, "invalid_params");
+  let result;
+  app.runInTransaction(function (tx) {
+    service.setSpecialStatus(tx, date, "dinner", args.status, "mcp");
+    result = dinnerResult(tx, date);
+  });
+  logAction("set_dinner_status", date, args.status);
+  return result;
+}
+
+function clearDinner(app, args) {
+  const date = writeDate(args);
+  let result;
+  let cleared = true;
+  app.runInTransaction(function (tx) {
+    cleared = service.clearAssignment(tx, date, "dinner");
+    result = dinnerResult(tx, date);
+  });
+  if (!cleared) {
+    logAction("clear_dinner", date, "has_history");
+    throw new ToolError("this dinner has cooked history and cannot be cleared", "has_history");
+  }
+  logAction("clear_dinner", date, "cleared");
+  return result;
+}
+
+function setDayCategory(app, args) {
+  const date = writeDate(args);
+  if (args.catId !== null && !Number.isInteger(args.catId)) throw new ToolError("catId must be an integer or null", "invalid_params");
+  let category = null;
+  if (args.catId !== null) {
+    category = service.categoryByCatId(app, args.catId);
+    if (!category) throw new ToolError("unknown catId; use list_categories", "unknown_category");
+  }
+  let result;
+  app.runInTransaction(function (tx) {
+    service.setCategoryOverride(tx, date, "dinner", category, "mcp");
+    result = dinnerResult(tx, date);
+  });
+  logAction("set_day_category", date, args.catId === null ? "override removed" : `catId ${args.catId}`);
+  return result;
+}
+
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false };
+const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+const DATE_PROP = { type: "string", description: "Dinner date, YYYY-MM-DD in APP_TIMEZONE. Today or later; earlier dates fail with past_date." };
 
 module.exports = [{
   name: "get_week",
@@ -105,4 +214,63 @@ module.exports = [{
   },
   annotations: READ_ONLY,
   handler: getRotation,
+}, {
+  name: "set_dinner",
+  title: "Plan a dinner",
+  description: "Plans the dinner for `date` (today or later) with an existing dish (`dishId`, or `dishName` matching exactly) or, for an unknown `dishName`, creates the dish in the day's category. Provide exactly one of dishId or dishName. Works on Saturday too. Replaces any earlier plan or status for the day and rejects its pending suggestions. Optional `ingredients` replaces the dish's ingredient list. Never looks up ingredients itself. Returns the resulting day in the get_week shape. Errors: past_date, dish_not_found, invalid_params.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      date: DATE_PROP,
+      dishId: { type: "string", description: "Id of an existing dish (see list_dishes). Use this or dishName." },
+      dishName: { type: "string", description: "Exact name of an existing dish, or the name of a new dish to create. Use this or dishId." },
+      ingredients: { type: "array", description: "Optional ingredient strings (max 50) to store on the dish.", items: { type: "string" } },
+    },
+    required: ["date"],
+    additionalProperties: false,
+  },
+  annotations: WRITE,
+  handler: setDinner,
+}, {
+  name: "set_dinner_status",
+  title: "Set dinner status",
+  description: "Marks the dinner on `date` (today or later) as leftovers, buy_food, eating_out or skipped, replacing any planned dish. Returns the resulting day in the get_week shape. Errors: past_date, invalid_params.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      date: DATE_PROP,
+      status: { type: "string", enum: SPECIAL_STATUSES, description: "One of leftovers, buy_food, eating_out, skipped." },
+    },
+    required: ["date", "status"],
+    additionalProperties: false,
+  },
+  annotations: WRITE,
+  handler: setDinnerStatus,
+}, {
+  name: "clear_dinner",
+  title: "Clear a dinner",
+  description: "Deletes the dinner plan or status for `date` (today or later) so the slot is unplanned again, including any category override. Fails with has_history when the dinner has cooked occurrences. Returns the resulting day in the get_week shape. Errors: past_date, has_history.",
+  inputSchema: {
+    type: "object",
+    properties: { date: DATE_PROP },
+    required: ["date"],
+    additionalProperties: false,
+  },
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  handler: clearDinner,
+}, {
+  name: "set_day_category",
+  title: "Override day category",
+  description: "Overrides the dinner category for `date` (today or later) with `catId` (see list_categories), or removes the override with null so the rotation category applies again. Any planned dish is kept. Returns the resulting day in the get_week shape. Errors: past_date, unknown_category.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      date: DATE_PROP,
+      catId: { type: ["integer", "null"], description: "Category catId to use for that day, or null to remove the override." },
+    },
+    required: ["date", "catId"],
+    additionalProperties: false,
+  },
+  annotations: WRITE,
+  handler: setDayCategory,
 }];

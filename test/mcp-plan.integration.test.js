@@ -130,4 +130,52 @@ test("MCP plan tools read weeks, ranges, categories and rotation over HTTP", { t
     assert.equal(result.days[5].kind, "eat_out");
     assert.equal((await tool("get_rotation", {})).structuredContent.days.length, 14);
   });
+  await t.test("write tools plan, status, clear and override against the real database", async () => {
+    const future = "2099-03-03"; // a Tuesday far in the future
+    const saturday = "2099-03-07";
+    const day = (result) => result.structuredContent.meals.dinner;
+    const assignments = async () => (await list("meal_assignments")).filter((a) => a.date.startsWith("2099-"));
+    const pastDate = await tool("set_dinner", { date: "2020-01-01", dishName: "Never" });
+    assert.equal(pastDate.isError, true);
+    assert.equal(pastDate.structuredContent.code, "past_date");
+    assert.equal((await assignments()).length, 0);
+
+    const planned = await tool("set_dinner", { date: future, dishName: "MCP Stew", ingredients: ["lamb", "herbs"] });
+    assert.equal(planned.isError, undefined, JSON.stringify(planned));
+    assert.equal(day(planned).status, "planned");
+    assert.equal(day(planned).selectionSource, "mcp");
+    const created = (await list("dishes")).find((d) => d.name === "MCP Stew");
+    assert.ok(created);
+    assert.deepEqual(created.ingredients, ["lamb", "herbs"]);
+    assert.equal(day(await tool("set_dinner", { date: saturday, dishId: dish.id })).status, "planned");
+    const week = (await tool("get_week", { date: saturday })).structuredContent;
+    assert.equal(week.days[5].meals.dinner.status, "planned");
+    assert.equal(day(await tool("set_dinner", { date: "2099-03-04", dishName: "Plan Koobideh" })).dish.id, dish.id);
+
+    const status = await tool("set_dinner_status", { date: future, status: "leftovers" });
+    assert.equal(day(status).status, "leftovers");
+    assert.equal(day(status).dish, null);
+    assert.equal((await tool("set_dinner_status", { date: future, status: "planned" })).isError, true);
+
+    const overridden = await tool("set_day_category", { date: "2099-03-05", catId: grill.catId });
+    assert.equal(day(overridden).status, "unplanned");
+    assert.equal(day(overridden).category.catId, grill.catId);
+    assert.equal(day(overridden).selectionSource, "mcp");
+    assert.equal((await tool("set_day_category", { date: "2099-03-05", catId: 999 })).structuredContent.code, "unknown_category");
+    const restored = await tool("set_day_category", { date: "2099-03-05", catId: null });
+    assert.equal(day(restored).status, "unplanned");
+    assert.equal((await assignments()).some((a) => a.date.startsWith("2099-03-05")), false);
+
+    const cleared = await tool("clear_dinner", { date: future });
+    assert.equal(day(cleared).status, "unplanned");
+    assert.equal((await assignments()).some((a) => a.date.startsWith(future)), false);
+
+    const kept = (await assignments()).find((a) => a.date.startsWith("2099-03-04"));
+    await create("cooked_occurrences", { date: "2099-03-04", meal: "dinner", assignment: kept.id, dish: dish.id });
+    const blocked = await tool("clear_dinner", { date: "2099-03-04" });
+    assert.equal(blocked.isError, true);
+    assert.equal(blocked.structuredContent.code, "has_history");
+    assert.ok((await assignments()).some((a) => a.id === kept.id));
+    assert.match(logs, /MCP action: set_dinner 2099-03-03 -> planned MCP Stew/);
+  });
 });
