@@ -2,6 +2,7 @@
 
 const calendar = require(`${__hooks}/meal_planning/calendar.js`);
 const service = require(`${__hooks}/meal_planning/service.js`);
+const rotationStore = require(`${__hooks}/meal_planning/rotation.js`);
 const clock = require(`${__hooks}/mcp/clock.js`);
 const { ToolError } = require(`${__hooks}/mcp/errors.js`);
 const { requireDate } = require(`${__hooks}/mcp/args.js`);
@@ -45,10 +46,11 @@ function getRotation(app, args) {
     const value = service.categoryValue(record);
     categories[value.catId] = value;
   }
+  const table = rotationStore.loadTable(app);
   const days = [];
   for (let i = 0; i < weeks * 7; i += 1) {
     const date = calendar.addDays(start, i);
-    const rotation = calendar.dinnerRotation(date);
+    const rotation = calendar.dinnerRotation(date, table);
     days.push(rotation.kind === "eat_out"
       ? { date: date, rotationWeek: rotation.rotationWeek, kind: "eat_out", catId: null, category: null }
       : { date: date, rotationWeek: rotation.rotationWeek, kind: "category", catId: rotation.catId, category: categories[rotation.catId] || null });
@@ -163,6 +165,23 @@ function setDayCategory(app, args) {
   return result;
 }
 
+// Changes the base rotation only: dates that already have an assignment keep
+// the category stored on it, and past assignments are never rewritten.
+function setRotationDay(app, args) {
+  if (!Number.isInteger(args.week) || args.week < 1 || args.week > 2) throw new ToolError("week must be 1 or 2", "invalid_params");
+  if (!Number.isInteger(args.weekday) || args.weekday < 0 || args.weekday > 6) throw new ToolError("weekday must be an integer from 0 (Monday) to 6 (Sunday)", "invalid_params");
+  const eatOut = args.catId === "eat_out";
+  let category = null;
+  if (!eatOut) {
+    if (!Number.isInteger(args.catId)) throw new ToolError("catId must be an integer or \"eat_out\"", "invalid_params");
+    category = service.categoryByCatId(app, args.catId);
+    if (!category) throw new ToolError("unknown catId; use list_categories", "unknown_category");
+  }
+  rotationStore.setDay(app, args.week, args.weekday, category);
+  logAction("set_rotation_day", `week ${args.week} weekday ${args.weekday}`, eatOut ? "eat_out" : `catId ${args.catId}`);
+  return getRotation(app, { from: undefined, weeks: DEFAULT_ROTATION_WEEKS });
+}
+
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false };
 const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const DATE_PROP = { type: "string", description: "Dinner date, YYYY-MM-DD in APP_TIMEZONE. Today or later; earlier dates fail with past_date." };
@@ -203,7 +222,7 @@ module.exports = [{
 }, {
   name: "get_rotation",
   title: "Get dinner rotation",
-  description: "Returns the two-week dinner category rotation resolved to concrete dates, starting on the Monday of the week containing `from` (default: the week being planned) and covering `weeks` weeks (default 2, max 8). Each day has rotationWeek (1 or 2) and either catId with its category, or kind eat_out with null catId (Saturday). This is the base rotation only; use get_week or get_plan to see overrides.",
+  description: "Returns the two-week dinner category rotation resolved to concrete dates, starting on the Monday of the week containing `from` (default: the week being planned) and covering `weeks` weeks (default 2, max 8). Each day has rotationWeek (1 or 2) and either catId with its category, or kind eat_out with null catId (Saturday). The rotation is stored in PocketBase and changed with set_rotation_day. This is the base rotation only; use get_week or get_plan to see overrides.",
   inputSchema: {
     type: "object",
     properties: {
@@ -273,4 +292,20 @@ module.exports = [{
   },
   annotations: WRITE,
   handler: setDayCategory,
+}, {
+  name: "set_rotation_day",
+  title: "Change a rotation day",
+  description: "Changes the base two-week dinner rotation: sets the category for `weekday` (0 = Monday … 6 = Sunday) of rotation `week` (1 or 2) to `catId` (see list_categories) or to \"eat_out\". Applies to every future date of that week/weekday without an assignment; dates that already have an assignment keep their stored category. Returns the resulting get_rotation view. Errors: unknown_category, invalid_params.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      week: { type: "integer", description: "Rotation week, 1 or 2 (see get_context / get_rotation)." },
+      weekday: { type: "integer", description: "0 = Monday … 6 = Sunday." },
+      catId: { type: ["integer", "string"], description: "Category catId, or the string \"eat_out\"." },
+    },
+    required: ["week", "weekday", "catId"],
+    additionalProperties: false,
+  },
+  annotations: WRITE,
+  handler: setRotationDay,
 }];

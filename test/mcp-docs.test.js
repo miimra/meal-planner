@@ -20,7 +20,13 @@ test("MCP documentation covers README, .env.example and DEPLOYMENT", () => {
 
 test("README MCP section lists every planned tool", () => {
   const readme = read("README.md");
-  for (const tool of ["get_context", "get_week", "get_plan", "list_categories", "get_rotation", "list_dishes", "get_dish", "get_history", "get_household", "update_category", "create_category", "upsert_dish", "set_dinner", "set_dinner_status", "clear_dinner", "set_day_category"]) {
+  for (const tool of ["get_context", "get_week", "get_plan", "list_categories", "get_rotation", "list_dishes", "get_dish", "get_history", "get_household", "update_category", "create_category", "upsert_dish", "set_dinner", "set_dinner_status", "clear_dinner", "set_day_category", "set_rotation_day"]) {
     assert.match(readme, new RegExp("^- `" + tool + "` - .+", "m"), tool);
   }
+});
+
+test("meal-categories doc names PocketBase as the rotation's source of truth and the table as the seed", () => {
+  const doc = read("docs/meal-categories.md");
+  assert.match(doc, /PocketBase is the source of truth for the rotation/);
+  assert.match(doc, /table below is the\s+initial seed/);
 });

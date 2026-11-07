@@ -80,7 +80,7 @@ test("every registered tool has title, description, annotations and property des
   }
 });
 
-const WRITE_TOOLS = ["update_category", "create_category", "upsert_dish", "set_dinner", "set_dinner_status", "clear_dinner", "set_day_category"];
+const WRITE_TOOLS = ["update_category", "create_category", "upsert_dish", "set_dinner", "set_dinner_status", "clear_dinner", "set_day_category", "set_rotation_day"];
 const PLAN_WRITE_TOOLS = ["set_dinner", "set_dinner_status", "clear_dinner", "set_day_category"];
 test("only the write tools are not read-only, and all tools are closed-world", () => {
   const listed = call("tools/list").result.tools;

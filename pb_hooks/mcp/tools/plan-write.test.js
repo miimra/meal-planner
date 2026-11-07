@@ -22,7 +22,7 @@ class Record {
 global.Record = Record;
 
 function makeApp() {
-  const store = { categories: [], dishes: [], meal_assignments: [], meal_suggestions: [], cooked_occurrences: [] };
+  const store = { categories: [], dishes: [], meal_assignments: [], meal_suggestions: [], cooked_occurrences: [], dinner_rotation: [] };
   let counter = 1;
   const state = { transactions: 0, failAfterSaves: -1, saves: 0 };
   function snapshot() { return JSON.stringify(store, (k, v) => (k === "collection" ? undefined : v)); }
@@ -39,6 +39,7 @@ function makeApp() {
       let rows = store[collection];
       if (collection === "meal_assignments") rows = rows.filter((r) => r.data.date === params.date && r.data.meal === params.meal);
       else if (collection === "categories" && filter.includes("catId =")) rows = rows.filter((r) => r.getInt("catId") === params.catId);
+      else if (collection === "dinner_rotation" && filter.includes("week =")) rows = rows.filter((r) => r.getInt("week") === params.week && r.getInt("weekday") === params.weekday);
       else if (collection === "dishes" && filter.includes("name =")) rows = rows.filter((r) => r.data.name === params.name);
       else if (collection === "meal_suggestions") rows = rows.filter((r) => r.data.date === params.date && r.data.meal === params.meal && r.data.outcome === "pending");
       else if (collection === "cooked_occurrences") rows = rows.filter((r) => (r.data.date === params.date && r.data.meal === params.meal) || r.data.assignment === params.id);
@@ -313,4 +314,89 @@ test("each write runs in one transaction, rolls back on failure and logs one act
   assert.equal(failed.isError, true);
   assert.equal(app.store.dishes.length, 0);
   assert.equal(app.store.meal_assignments.length, 0);
+});
+
+// The seeded table from the dinner_rotation migration, as rows.
+function seedRotation() {
+  const table = { 1: [12, 10, 7, 6, 2, null, 3], 2: [5, 11, 8, 9, 4, null, 1] };
+  for (const week of [1, 2]) {
+    table[week].forEach((catId, weekday) => {
+      const row = new Record("dinner_rotation");
+      row.data.week = week;
+      row.data.weekday = weekday;
+      if (catId === null) row.data.kind = "eat_out";
+      else row.data.category = "c" + catId;
+      app.save(row);
+    });
+  }
+}
+const rotationRows = () => JSON.stringify(app.store.dinner_rotation.map((r) => r.data));
+const thursday = () => call("get_week", { date: "2026-11-05" }).structuredContent.days[3].meals.dinner; // rotation week 1, Thursday
+
+test("set_rotation_day updates the matching row, get_rotation and get_week reflect it, and it logs", () => {
+  reset();
+  seedRotation();
+  assert.equal(thursday().category.catId, 6);
+  const r = call("set_rotation_day", { week: 1, weekday: 3, catId: 9 });
+  assert.equal(r.isError, undefined);
+  assert.equal(app.store.dinner_rotation.length, 14);
+  assert.deepEqual(r.logs, ["MCP action: set_rotation_day week 1 weekday 3 -> catId 9"]);
+  const rotation = call("get_rotation", { from: "2026-11-02", weeks: 1 }).structuredContent;
+  assert.equal(rotation.days[3].catId, 9);
+  assert.equal(rotation.days[2].catId, 7);
+  assert.equal(thursday().category.catId, 9); // unassigned future date follows the new row
+  const telegramWeek = views.weeklyPlanText(service.weekValue(app, "2026-11-05"), "Week", "2026-11-04");
+  assert.match(telegramWeek, /Thu<\/b> <i>[^<]*<\/i>\n      🧭 🍲 Cat 9/); // Telegram's week view shows it too
+  // eat_out switches the row to kind eat_out and the week view to eating_out
+  const out = call("set_rotation_day", { week: 1, weekday: 3, catId: "eat_out" });
+  assert.match(out.logs[0], /^MCP action: set_rotation_day week 1 weekday 3 -> eat_out$/);
+  assert.equal(thursday().status, "eating_out");
+  assert.equal(call("get_rotation", { from: "2026-11-02", weeks: 1 }).structuredContent.days[3].kind, "eat_out");
+  assert.equal(app.store.dinner_rotation.length, 14);
+});
+
+test("set_rotation_day creates the row when the collection is empty", () => {
+  reset();
+  call("set_rotation_day", { week: 1, weekday: 3, catId: 9 });
+  assert.equal(app.store.dinner_rotation.length, 1);
+  assert.equal(thursday().category.catId, 9);
+  assert.equal(call("get_week", { date: "2026-11-04" }).structuredContent.days[0].meals.dinner.category.catId, 12); // other slots fall back
+});
+
+test("a changed rotation row leaves dates with an assignment on their stored category", () => {
+  reset();
+  seedRotation();
+  call("set_day_category", { date: "2026-11-05", catId: 11 });
+  call("set_dinner", { date: "2026-11-06", dishName: "Kebab" }); // Friday keeps rotation category 2 via no override
+  call("set_rotation_day", { week: 1, weekday: 3, catId: 9 });
+  assert.equal(thursday().category.catId, 11);
+  const friday = call("get_week", { date: "2026-11-05" }).structuredContent.days[4].meals.dinner;
+  assert.equal(friday.dish.name, "Kebab");
+});
+
+test("set_rotation_day rejects an unknown catId and changes no row", () => {
+  reset();
+  seedRotation();
+  const before = rotationRows();
+  const r = call("set_rotation_day", { week: 1, weekday: 3, catId: 99 });
+  assert.equal(r.isError, true);
+  assert.equal(r.structuredContent.code, "unknown_category");
+  assert.equal(r.logs.length, 0);
+  assert.equal(rotationRows(), before);
+});
+
+test("set_rotation_day rejects a week outside 1-2 and changes no row", () => {
+  reset();
+  seedRotation();
+  const before = rotationRows();
+  for (const week of [0, 3, 1.5, "1"]) assert.equal(call("set_rotation_day", { week, weekday: 3, catId: 9 }).isError, true, String(week));
+  assert.equal(rotationRows(), before);
+});
+
+test("set_rotation_day rejects a weekday outside 0-6 and changes no row", () => {
+  reset();
+  seedRotation();
+  const before = rotationRows();
+  for (const weekday of [-1, 7, 2.5, "3"]) assert.equal(call("set_rotation_day", { week: 1, weekday, catId: 9 }).isError, true, String(weekday));
+  assert.equal(rotationRows(), before);
 });

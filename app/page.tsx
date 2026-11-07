@@ -48,11 +48,11 @@ export default function HomePage() {
   const today = amsterdamToday(now);
   const weekStart = mondayKey(today);
   const weekEnd = addDateDays(weekStart, 6);
-  const { assignments, categories, dishes, error, loading, refresh } = useMealPlan(weekStart, addDateDays(weekEnd, 1));
+  const { assignments, categories, dishes, error, loading, refresh, rotation } = useMealPlan(weekStart, addDateDays(weekEnd, 1));
 
   const days = useMemo(
-    () => Array.from({ length: 8 }, (_, index) => buildDay(addDateDays(weekStart, index), categories, dishes, assignments)),
-    [assignments, categories, dishes, weekStart],
+    () => Array.from({ length: 8 }, (_, index) => buildDay(addDateDays(weekStart, index), categories, dishes, assignments, rotation)),
+    [assignments, categories, dishes, rotation, weekStart],
   );
   const week = days.slice(0, 7);
 

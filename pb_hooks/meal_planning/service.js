@@ -3,6 +3,7 @@
 const calendar = require(`${__hooks}/meal_planning/calendar.js`);
 const json = require(`${__hooks}/shared/json.js`);
 const openrouter = require(`${__hooks}/openrouter/client.js`);
+const rotationStore = require(`${__hooks}/meal_planning/rotation.js`);
 const preference = require(`${__hooks}/meal_planning/preference.js`);
 const prompt = require(`${__hooks}/openrouter/prompt.js`);
 const recommendation = require(`${__hooks}/meal_planning/recommendation.js`);
@@ -74,12 +75,17 @@ function categoryByCatId(app, catId) {
   return first(app, "categories", "catId = {:catId}", { catId });
 }
 
+// The week-parity rule from calendar.js applied to the live rotation table.
+function dinnerRotation(app, date) {
+  return calendar.dinnerRotation(date, rotationStore.loadTable(app));
+}
+
 function effectiveCategory(app, date, meal, assignment) {
   if (assignment && assignment.getString("category")) {
     return optionalById(app, "categories", assignment.getString("category"));
   }
   if (meal !== "dinner") return null;
-  const rotation = calendar.dinnerRotation(date);
+  const rotation = dinnerRotation(app, date);
   return rotation.kind === "category" ? categoryByCatId(app, rotation.catId) : null;
 }
 
@@ -110,7 +116,7 @@ function slotValue(app, date, meal) {
   const assignment = assignmentFor(app, date, meal);
   const category = effectiveCategory(app, date, meal, assignment);
   const dish = assignment ? optionalById(app, "dishes", assignment.getString("dish")) : null;
-  const rotation = meal === "dinner" ? calendar.dinnerRotation(date) : null;
+  const rotation = meal === "dinner" ? dinnerRotation(app, date) : null;
   let status = assignment ? assignment.getString("status") || (dish ? "planned" : "unplanned") : "unplanned";
   if (!assignment && rotation && rotation.kind === "eat_out") status = "eating_out";
   return {

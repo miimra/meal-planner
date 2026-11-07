@@ -2,7 +2,7 @@ import type { Category } from "./categories.ts";
 import { findCategory } from "./categories.ts";
 
 // ── Day model ────────────────────────────────────────────────────────────────
-// We work in Monday-first order to match the rotation tables in the README.
+// We work in Monday-first order to match the rotation table in docs/meal-categories.md.
 
 export type DayIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Monday … 6 = Sunday
 export type RotationWeek = 1 | 2;
@@ -50,45 +50,68 @@ export function rotationWeekOf(date: Date): RotationWeek {
 }
 
 // ── The plan ─────────────────────────────────────────────────────────────────
-// Category id for each day Monday → Sunday, per rotation week. `null` is
-// Saturday, always eating out. See docs/meal-categories.md; the bot's
-// calendar.js encodes the same tables. This table only knows catIds — it has
-// no dependency on where/how category content is loaded.
+// The rotation lives in PocketBase's `dinner_rotation` collection (one row per
+// week 1|2 and weekday 0–6, holding a category or `kind = eat_out`) and is
+// edited through the MCP `set_rotation_day` tool. This module only knows how
+// to turn the fetched rows into a lookup table and resolve a date against it;
+// it has no dependency on where/how category content is loaded.
 
-const WEEK_1: (number | null)[] = [12, 10, 7, 6, 2, null, 3];
-const WEEK_2: (number | null)[] = [5, 11, 8, 9, 4, null, 1];
+/** Category id (catId) per weekday Monday → Sunday; `null` = eating out. A missing entry means the slot is not loaded/set. */
+export type RotationTable = Record<RotationWeek, (number | null | undefined)[]>;
 
-export type DayKind = "weekday" | "eat-out";
+/** Rotation lookup before the rows have loaded: every slot unset. */
+export const EMPTY_ROTATION: RotationTable = { 1: [], 2: [] };
+
+/** A `dinner_rotation` row fetched with `expand: "category"`. */
+export interface RotationRecord {
+  week: number;
+  weekday: number;
+  kind?: string;
+  category?: string;
+  expand?: { category?: { catId: number } };
+}
+
+/** Build the lookup table from the fetched `dinner_rotation` rows. */
+export function rotationTableFromRecords(records: RotationRecord[]): RotationTable {
+  const table: RotationTable = { 1: [], 2: [] };
+  for (const record of records) {
+    if (record.week !== 1 && record.week !== 2) continue;
+    if (!Number.isInteger(record.weekday) || record.weekday < 0 || record.weekday > 6) continue;
+    if (record.kind === "eat_out") table[record.week][record.weekday] = null;
+    else if (record.expand?.category) table[record.week][record.weekday] = record.expand.category.catId;
+  }
+  return table;
+}
+
+export type DayKind = "weekday" | "eat-out" | "unset";
 
 export interface PlanDay {
   day: DayIndex;
   dayName: string;
   week: RotationWeek;
   kind: DayKind;
-  /** Resolved category id for cooking days. Undefined for eat-out days. */
+  /** Resolved category id for cooking days. Undefined for eat-out and unset days. */
   categoryId?: number;
 }
 
 /** Resolve the plan for a specific weekday index within a rotation week. */
-export function planForDay(week: RotationWeek, day: DayIndex): PlanDay {
+export function planForDay(table: RotationTable, week: RotationWeek, day: DayIndex): PlanDay {
   const dayName = DAY_NAMES[day];
-  const table = week === 1 ? WEEK_1 : WEEK_2;
-  const catId = table[day];
-  if (catId === null) {
-    return { day, dayName, week, kind: "eat-out" };
-  }
+  const catId = table[week][day];
+  if (catId === undefined) return { day, dayName, week, kind: "unset" };
+  if (catId === null) return { day, dayName, week, kind: "eat-out" };
   return { day, dayName, week, kind: "weekday", categoryId: catId };
 }
 
 /** The plan for an actual calendar date. */
-export function planForDate(date: Date): PlanDay {
-  return planForDay(rotationWeekOf(date), toDayIndex(date));
+export function planForDate(table: RotationTable, date: Date): PlanDay {
+  return planForDay(table, rotationWeekOf(date), toDayIndex(date));
 }
 
 /** The seven PlanDays (Mon→Sun) for the week containing `date`. */
-export function weekPlan(date: Date): PlanDay[] {
+export function weekPlan(table: RotationTable, date: Date): PlanDay[] {
   const week = rotationWeekOf(date);
-  return DAY_NAMES.map((_, i) => planForDay(week, i as DayIndex));
+  return DAY_NAMES.map((_, i) => planForDay(table, week, i as DayIndex));
 }
 
 export function addDays(date: Date, n: number): Date {

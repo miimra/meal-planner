@@ -35,6 +35,7 @@ const app = {
   findRecordsByFilter(collection, filter, sort, limit, offset, params) {
     if (collection === "meal_assignments") return ASSIGNMENTS.filter((a) => a.get("date") === params.date && a.get("meal") === params.meal);
     if (collection === "categories") return filter.includes("catId =") ? CATEGORIES.filter((c) => c.getInt("catId") === params.catId) : CATEGORIES;
+    if (collection === "dinner_rotation") return []; // empty collection: calendar falls back to the hardcoded table
     throw new Error("unexpected collection " + collection);
   },
   findRecordById(collection, id) {
@@ -158,7 +159,7 @@ test("read tools are read-only and reuse the shared service and calendar", () =>
   for (const fn of ["service.weekValue", "service.dayValue", "service.categoryValue", "calendar.dinnerRotation"]) assert.ok(source.includes(fn), fn);
   assert.doesNotMatch(source, /\.(save|delete|create)\w*\(/);
   const tools = require("./plan.js");
-  assert.deepEqual(tools.map((t) => t.name), ["get_week", "get_plan", "list_categories", "get_rotation", "set_dinner", "set_dinner_status", "clear_dinner", "set_day_category"]);
+  assert.deepEqual(tools.map((t) => t.name), ["get_week", "get_plan", "list_categories", "get_rotation", "set_dinner", "set_dinner_status", "clear_dinner", "set_day_category", "set_rotation_day"]);
   for (const tool of tools.slice(0, 4)) assert.equal(tool.annotations.readOnlyHint, true);
   for (const tool of tools.slice(4)) assert.equal(tool.annotations.readOnlyHint, false);
   assert.equal(tools.find((t) => t.name === "clear_dinner").annotations.destructiveHint, true);

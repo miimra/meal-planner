@@ -34,17 +34,22 @@ function weekBounds(value) {
   return { start: addDays(date, -day), end: addDays(date, 6 - day) };
 }
 
-function dinnerRotation(value) {
+// Monday → Sunday, null = eating out; see docs/meal-categories.md. This is
+// only the seed/fallback: the live table is the `dinner_rotation` collection.
+const DEFAULT_ROTATION = { 1: [12, 10, 7, 6, 2, null, 3], 2: [5, 11, 8, 9, 4, null, 1] };
+
+// The parity rule is pure; `table` (from rotation.loadTable) supplies the
+// categories. Slots missing from it fall back to the hardcoded table.
+function dinnerRotation(value, table) {
   const date = typeof value === "string" ? parseDate(value) : value;
   const monday = parseDate(weekBounds(date).start);
   const weekOffset = Math.round((monday.getTime() - Date.UTC(2024, 0, 1)) / (7 * DAY_MS));
   const rotationWeek = ((weekOffset % 2) + 2) % 2 === 0 ? 1 : 2;
   const day = (date.getUTCDay() + 6) % 7;
-  if (day === 5) return { kind: "eat_out", rotationWeek };
-  // Monday → Sunday, Saturday skipped; see docs/meal-categories.md.
-  const weekOne = [12, 10, 7, 6, 2, null, 3];
-  const weekTwo = [5, 11, 8, 9, 4, null, 1];
-  return { kind: "category", rotationWeek, catId: (rotationWeek === 1 ? weekOne : weekTwo)[day] };
+  const row = (table && table[rotationWeek]) || [];
+  const catId = row[day] === undefined ? DEFAULT_ROTATION[rotationWeek][day] : row[day];
+  if (catId === null) return { kind: "eat_out", rotationWeek };
+  return { kind: "category", rotationWeek, catId };
 }
 
 function assertMeal(value) {
@@ -72,4 +77,4 @@ function weekDates(start) {
   return dates;
 }
 
-module.exports = { MEALS, addDays, assertMeal, dateKey, dinnerRotation, parseDate, planningWeekStart, servingProfile, weekBounds, weekDates };
+module.exports = { MEALS, addDays, assertMeal, dateKey, DEFAULT_ROTATION, dinnerRotation, parseDate, planningWeekStart, servingProfile, weekBounds, weekDates };

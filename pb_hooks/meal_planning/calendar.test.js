@@ -49,3 +49,20 @@ test("the planning week rolls over on Sunday, when the next week is announced", 
   assert.deepEqual(calendar.weekDates("2026-08-17").length, 7);
   assert.equal(calendar.weekDates("2026-08-17")[6], "2026-08-23");
 });
+
+test("dinner rotation reads categories from the supplied table and keeps the parity rule", () => {
+  const table = { 1: [1, 1, 1, 1, 1, null, 1], 2: [2, 2, 2, 2, 2, 2, 2] };
+  // Monday 2024-01-01 is week 1 (even weeks from the anchor); the next Monday is week 2.
+  assert.deepEqual(calendar.dinnerRotation("2024-01-01", table), { kind: "category", rotationWeek: 1, catId: 1 });
+  assert.deepEqual(calendar.dinnerRotation("2024-01-08", table), { kind: "category", rotationWeek: 2, catId: 2 });
+  assert.deepEqual(calendar.dinnerRotation("2024-01-15", table), { kind: "category", rotationWeek: 1, catId: 1 });
+  assert.equal(calendar.dinnerRotation("2024-01-06", table).kind, "eat_out");
+  // week 2 Saturday is a category here, so the table, not the weekday, decides
+  assert.deepEqual(calendar.dinnerRotation("2024-01-13", table), { kind: "category", rotationWeek: 2, catId: 2 });
+});
+
+test("dinner rotation falls back to the hardcoded table without a table or for missing slots", () => {
+  assert.deepEqual(calendar.dinnerRotation("2026-08-10", null), { kind: "category", rotationWeek: 1, catId: 12 });
+  assert.deepEqual(calendar.dinnerRotation("2026-08-10", { 1: [], 2: [] }), { kind: "category", rotationWeek: 1, catId: 12 });
+  assert.deepEqual(calendar.dinnerRotation("2026-08-10", { 1: [3], 2: [] }), { kind: "category", rotationWeek: 1, catId: 3 });
+});
