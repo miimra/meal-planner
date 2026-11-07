@@ -9,7 +9,7 @@ export type Effort = "quick" | "medium" | "medium-heavy" | "heavy";
 export interface Category {
   /** PocketBase record id used by meal assignment relations. */
   pbId: string;
-  /** Stable 1–12 id. `rotation.ts`'s day tables reference categories by this. */
+  /** Stable 1–12 id. The `dinner_rotation` rows reference categories by this. */
   catId: number;
   name_fa: string;
   name_en: string;

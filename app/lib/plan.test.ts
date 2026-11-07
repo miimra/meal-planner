@@ -2,6 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { amsterdamToday, buildDay, mealHasPassed, mondayKey } from "./plan.ts";
 import type { Category } from "./categories.ts";
+import { rotationTableFromRecords, type RotationRecord } from "./rotation.ts";
+
+const SEED = { 1: [12, 10, 7, 6, 2, null, 3], 2: [5, 11, 8, 9, 4, null, 1] };
+function seedRecords(): RotationRecord[] {
+  const records: RotationRecord[] = [];
+  for (const week of [1, 2]) {
+    SEED[week as 1 | 2].forEach((catId, weekday) => {
+      records.push(catId === null ? { week, weekday, kind: "eat_out" } : { week, weekday, expand: { category: { catId } } });
+    });
+  }
+  return records;
+}
+const rotation = rotationTableFromRecords(seedRecords());
 
 const categories: Category[] = [{
   pbId: "fish-record",
@@ -16,7 +29,7 @@ const categories: Category[] = [{
 
 test("buildDay covers dinner only, and fills its rotation category", () => {
   // Thursday 2026-08-13 sits in rotation week 1: Seafood.
-  const day = buildDay("2026-08-13", categories, [], []);
+  const day = buildDay("2026-08-13", categories, [], [], rotation);
   assert.deepEqual(Object.keys(day.meals), ["dinner"]);
   assert.equal(day.meals.dinner.category?.catId, 6);
   assert.equal(day.meals.dinner.dish, null);
@@ -30,8 +43,8 @@ test("buildDay gives Sunday its fixed rotation category and Saturday none", () =
     { ...categories[0], pbId: "stew-record", catId: 3, name_en: "Iranian Stews & Slow Dishes", name_fa: "خورشت و غذای آرام‌پز ایرانی", emoji: "🍲" },
   ];
   // Sunday 2026-08-16 closes rotation week 1 (Iranian Stew); Saturday before it eats out.
-  assert.equal(buildDay("2026-08-16", sundayCategories, [], []).meals.dinner.category?.catId, 3);
-  const saturday = buildDay("2026-08-15", sundayCategories, [], []).meals.dinner;
+  assert.equal(buildDay("2026-08-16", sundayCategories, [], [], rotation).meals.dinner.category?.catId, 3);
+  const saturday = buildDay("2026-08-15", sundayCategories, [], [], rotation).meals.dinner;
   assert.equal(saturday.category, null);
   assert.equal(saturday.status, "eating_out");
 });
@@ -46,10 +59,22 @@ test("buildDay exposes exact assignments and special statuses", () => {
       // A leftover row from the three-meal era must be ignored, not rendered.
       { id: "b", date: "2026-08-12", meal: "lunch", status: "buy_food" },
     ],
+    rotation,
   );
   assert.equal(day.meals.dinner.dish?.name, "Lemon salmon");
   assert.equal(day.meals.dinner.category?.name_en, "Seafood");
   assert.deepEqual(Object.keys(day.meals), ["dinner"]);
+});
+
+test("buildDay follows a changed rotation row for unassigned dates but not for assigned ones", () => {
+  const records = seedRecords();
+  // Thursday of week 1 (2026-08-13) becomes Wraps (catId 8) instead of Seafood.
+  records.find((r) => r.week === 1 && r.weekday === 3)!.expand = { category: { catId: 8 } };
+  const changed = rotationTableFromRecords(records);
+  const both: Category[] = [...categories, { ...categories[0], pbId: "wrap-record", catId: 8, name_en: "Wraps" }];
+  assert.equal(buildDay("2026-08-13", both, [], [], changed).meals.dinner.category?.catId, 8);
+  const assigned = [{ id: "a", date: "2026-08-13", meal: "dinner", category: "fish-record", status: "unplanned" }];
+  assert.equal(buildDay("2026-08-13", both, [], assigned as never, changed).meals.dinner.category?.catId, 6);
 });
 
 test("Amsterdam date and Monday calculations are calendar-safe", () => {

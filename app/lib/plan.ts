@@ -1,6 +1,6 @@
 import type { Category } from "./categories.ts";
 import { findCategory } from "./categories.ts";
-import { planForDate } from "./rotation.ts";
+import { planForDate, type RotationTable } from "./rotation.ts";
 
 // Dinner is the only meal the plan covers. Older breakfast and lunch rows stay
 // in PocketBase, so the stored type stays wider than what we render.
@@ -123,13 +123,14 @@ export function buildDay(
   categories: Category[],
   dishes: PlanDish[],
   assignments: AssignmentRecord[],
+  rotationTable: RotationTable,
 ): PlanDay {
   const assignmentMap = new Map(
     assignments.filter((item) => item.date === date).map((item) => [item.meal, item]),
   );
   const categoryByRecordId = new Map(categories.map((item) => [item.pbId, item]));
   const dishById = new Map(dishes.map((item) => [item.id, item]));
-  const rotation = planForDate(dateFromKey(date));
+  const rotation = planForDate(rotationTable, dateFromKey(date));
   const meals = {} as Record<PlannedMeal, MealSlot>;
 
   for (const meal of MEALS) {

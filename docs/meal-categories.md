@@ -34,6 +34,15 @@ below; editing this document alone does not update the database.
 
 ## Two-week dinner rotation
 
+PocketBase is the source of truth for the rotation: the `dinner_rotation`
+collection holds one row per rotation week (1 or 2) and weekday (0 = Monday …
+6 = Sunday), each with a `category` or `kind = eat_out`. The table below is the
+initial seed written by the `1788200000_dinner_rotation` migration, not the live
+value. Change the live rotation with the MCP `set_rotation_day` tool; the web
+app and Telegram follow without a deploy. Dates that already have an assignment
+keep their stored category. If the collection is ever empty, the bot falls back
+to the seed table hardcoded in `pb_hooks/meal_planning/calendar.js`.
+
 Only dinner is planned. Saturday is always eating out. Sunday is a fixed theme
 in each week rather than a choice.
 
@@ -44,8 +53,9 @@ in each week rather than a choice.
 
 As `catId` values: week 1 is `12, 10, 7, 6, 2, –, 3` and week 2 is
 `5, 11, 8, 9, 4, –, 1`. Week 1 is any week whose Monday is an even number of
-weeks after Monday 2024-01-01; `pb_hooks/meal_planning/calendar.js` and
-`app/lib/rotation.ts` both encode the same tables.
+weeks after Monday 2024-01-01; that parity rule lives in
+`pb_hooks/meal_planning/calendar.js` and `app/lib/rotation.ts`, while the
+categories come from the collection.
 
 ## Selection rules
 

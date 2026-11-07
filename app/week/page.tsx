@@ -41,14 +41,14 @@ export default function WeekPage() {
   const today = amsterdamToday(now);
   const start = mondayKey(today);
   const end = addDateDays(start, 6);
-  const { assignments, categories, dishes, error, loading, refresh } = useMealPlan(start, end);
+  const { assignments, categories, dishes, error, loading, refresh, rotation } = useMealPlan(start, end);
 
   const days = useMemo(
     () =>
       Array.from({ length: 7 }, (_, index) =>
-        buildDay(addDateDays(start, index), categories, dishes, assignments),
+        buildDay(addDateDays(start, index), categories, dishes, assignments, rotation),
       ),
-    [assignments, categories, dishes, start],
+    [assignments, categories, dishes, rotation, start],
   );
 
   if (loading) {

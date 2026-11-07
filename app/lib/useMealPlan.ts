@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { pb } from "./pb.ts";
 import type { Category } from "./categories.ts";
 import type { AssignmentRecord, PlanDish } from "./plan.ts";
+import { EMPTY_ROTATION, rotationTableFromRecords, type RotationRecord, type RotationTable } from "./rotation.ts";
 
 export interface CategoryRecord {
   id: string;
@@ -41,26 +42,35 @@ export function mapCategoryRecord(record: CategoryRecord): Category {
   };
 }
 
+/** The live rotation from PocketBase, so a changed row shows up without a rebuild. */
+export async function fetchRotation(): Promise<RotationTable> {
+  const records = await pb.collection("dinner_rotation").getFullList<RotationRecord>({ expand: "category" });
+  return rotationTableFromRecords(records);
+}
+
 export function useMealPlan(start: string, end: string) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [dishes, setDishes] = useState<PlanDish[]>([]);
   const [assignments, setAssignments] = useState<AssignmentRecord[]>([]);
+  const [rotation, setRotation] = useState<RotationTable>(EMPTY_ROTATION);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [categoryRecords, dishRecords, assignmentRecords] = await Promise.all([
+      const [categoryRecords, dishRecords, assignmentRecords, rotationTable] = await Promise.all([
         pb.collection("categories").getFullList<CategoryRecord>({ sort: "catId" }),
         pb.collection("dishes").getFullList<DishRecord>({ sort: "name" }),
         pb.collection("meal_assignments").getFullList<AssignmentRecord>({
           filter: pb.filter("date >= {:start} && date <= {:end}", { start, end }),
           sort: "date,meal",
         }),
+        fetchRotation(),
       ]);
       setCategories(categoryRecords.map(mapCategoryRecord));
       setDishes(dishRecords.map((record) => ({ id: record.id, name: record.name })));
       setAssignments(assignmentRecords);
+      setRotation(rotationTable);
       setError(null);
     } catch {
       setError("Couldn’t load the meal plan.");
@@ -82,5 +92,5 @@ export function useMealPlan(start: string, end: string) {
     };
   }, [refresh]);
 
-  return { assignments, categories, dishes, error, loading, refresh };
+  return { assignments, categories, dishes, error, loading, refresh, rotation };
 }

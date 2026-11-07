@@ -12,9 +12,11 @@ import {
   rotationWeekOf,
   toDayIndex,
   type DayIndex,
+  EMPTY_ROTATION,
+  type RotationTable,
   type RotationWeek,
 } from "../lib/rotation.ts";
-import { mapCategoryRecord, type CategoryRecord } from "../lib/useMealPlan.ts";
+import { fetchRotation, mapCategoryRecord, type CategoryRecord } from "../lib/useMealPlan.ts";
 import { useCurrentTime } from "../lib/useCurrentTime.ts";
 
 const DAY_FA = ["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه", "شنبه", "یکشنبه"] as const;
@@ -40,13 +42,18 @@ function splitNotes(notes: string | undefined): { intro: string; examples: strin
 
 function useCategories() {
   const [categories, setCategories] = useState<Category[]>([]);
+  const [rotation, setRotation] = useState<RotationTable>(EMPTY_ROTATION);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const records = await pb.collection("categories").getFullList<CategoryRecord>({ sort: "catId" });
+      const [records, rotationTable] = await Promise.all([
+        pb.collection("categories").getFullList<CategoryRecord>({ sort: "catId" }),
+        fetchRotation(),
+      ]);
       setCategories(records.map(mapCategoryRecord));
+      setRotation(rotationTable);
       setError(null);
     } catch {
       setError("Couldn’t load the categories.");
@@ -59,7 +66,7 @@ function useCategories() {
     refresh();
   }, [refresh]);
 
-  return { categories, error, loading, refresh };
+  return { categories, error, loading, refresh, rotation };
 }
 
 export default function CategoriesPage() {
@@ -68,7 +75,7 @@ export default function CategoriesPage() {
   const todayDate = dateFromKey(today);
   const currentWeek = rotationWeekOf(todayDate);
   const todayIndex = toDayIndex(todayDate);
-  const { categories, error, loading, refresh } = useCategories();
+  const { categories, error, loading, refresh, rotation } = useCategories();
 
   if (loading) {
     return (
@@ -108,7 +115,7 @@ export default function CategoriesPage() {
           The categories
         </h1>
         <p className="rise mt-2 text-base text-ink-soft" style={step(2)}>
-          Each day has one theme. Saturdays we eat out. This is rotation week {currentWeek}.
+          Each day has one theme, or we eat out. This is rotation week {currentWeek}.
         </p>
       </header>
 
@@ -119,6 +126,7 @@ export default function CategoriesPage() {
           current={week === currentWeek}
           todayIndex={todayIndex}
           categories={categories}
+          rotation={rotation}
           offset={3 + position * 8}
         />
       ))}
@@ -131,12 +139,14 @@ function WeekSection({
   current,
   todayIndex,
   categories,
+  rotation,
   offset,
 }: {
   week: RotationWeek;
   current: boolean;
   todayIndex: DayIndex;
   categories: Category[];
+  rotation: RotationTable;
   offset: number;
 }) {
   return (
@@ -148,7 +158,7 @@ function WeekSection({
         </span>
       </div>
       {DAYS.map((day, index) => {
-        const plan = planForDay(week, day);
+        const plan = planForDay(rotation, week, day);
         const category = plan.categoryId !== undefined ? findCategory(categories, plan.categoryId) : undefined;
         const isToday = current && day === todayIndex;
         return (

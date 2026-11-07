@@ -83,7 +83,7 @@ transaction and logs `MCP action: <tool> <id> -> <result>` (free text capped at
 - `get_week` - the dinner plan for one Monday-Sunday week with slot statuses.
 - `get_plan` - the dinner plan for a range of dates.
 - `list_categories` - the dinner categories.
-- `get_rotation` - the two-week category rotation.
+- `get_rotation` - the two-week category rotation (stored in PocketBase `dinner_rotation`).
 - `list_dishes` - known dishes, optionally filtered.
 - `get_dish` - one dish with its details.
 - `get_history` - what was cooked or eaten out on past dates.
@@ -95,6 +95,7 @@ transaction and logs `MCP action: <tool> <id> -> <result>` (free text capped at
 - `set_dinner_status` - mark a dinner leftovers, buy_food, eating_out or skipped.
 - `clear_dinner` - remove a dinner plan (not when it has cooked history).
 - `set_day_category` - override a day's category, or remove it with null.
+- `set_rotation_day` - change one day (`week` 1-2, `weekday` 0-6, `catId` or `"eat_out"`) of the two-week rotation; assigned dates keep their stored category.
 
 Recommendation: the MCP client connects over the tunnel, but the endpoint does
 not need to be reachable from the public internet by anyone else. Block
