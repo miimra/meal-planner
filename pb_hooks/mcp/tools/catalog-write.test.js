@@ -211,3 +211,83 @@ test("the write tools are listed with an input schema and readOnlyHint false; lo
   const text = call(app, "create_category", { name_en: "Z".repeat(500) });
   assert.equal(text.result.isError, undefined);
 });
+
+test("bulk_upsert_dishes creates and partially updates dishes and returns them in the get_dish shape in input order", () => {
+  const app = makeApp(); seed(app);
+  const { result, logs } = call(app, "bulk_upsert_dishes", { dishes: [
+    { name: "Zucchini Soup", catId: 7, categoryIds: [1, 7], ingredients: ["zucchini"], difficulty: "easy" },
+    { id: "d1", cook_minutes: 9, notes: "less salt" },
+    { name: "Apple Pie", instructions: ["Bake"] },
+  ] });
+  assert.equal(result.isError, undefined, JSON.stringify(result));
+  const dishes = result.structuredContent.dishes;
+  assert.deepEqual(dishes.map((d) => d.name), ["Zucchini Soup", "Omelette", "Apple Pie"]);
+  assert.equal(dishes[0].catId, 7);
+  assert.deepEqual(dishes[0].relatedCategories.map((c) => c.catId), [1, 7]);
+  assert.equal(dishes[1].cookMinutes, 9);
+  assert.equal(dishes[1].notes, "less salt");
+  assert.deepEqual(dishes[1].ingredients, ["eggs"]);
+  assert.deepEqual(dishes[2].instructions, ["Bake"]);
+  assert.equal(app.tables.dishes.length, 4);
+  // each result equals what get_dish returns for the same dish
+  for (const dish of dishes) {
+    assert.deepEqual(call(app, "get_dish", { id: dish.id }).result.structuredContent, dish);
+  }
+  assert.equal(app.transactions, 1);
+  assert.deepEqual(logs, ["MCP action: bulk_upsert_dishes bulk -> created 2, updated 1"]);
+});
+
+test("bulk_upsert_dishes accepts exactly 50 dishes and rejects 51 without writing", () => {
+  const app = makeApp(); seed(app);
+  const make = (n) => Array.from({ length: n }, (_, i) => ({ name: "Bulk " + i }));
+  const before = snapshot(app);
+  const over = call(app, "bulk_upsert_dishes", { dishes: make(51) }).result;
+  assert.equal(over.isError, true);
+  assert.equal(snapshot(app), before);
+  assert.equal(call(app, "bulk_upsert_dishes", { dishes: [] }).result.isError, true);
+  const ok = call(app, "bulk_upsert_dishes", { dishes: make(50) }).result;
+  assert.equal(ok.isError, undefined);
+  assert.equal(ok.structuredContent.dishes.length, 50);
+  assert.equal(app.tables.dishes.length, 52);
+});
+
+test("bulk_upsert_dishes fails on any invalid item, names its index and writes nothing", () => {
+  const app = makeApp(); seed(app);
+  const before = snapshot(app);
+  const good = [{ name: "Fine One" }, { id: "d2", notes: "ok" }];
+  const cases = [
+    [{ name: "Bad Cat", catId: 99 }, "invalid_params"],
+    [{ name: "Bad Related", categoryIds: [1, 99] }, "invalid_params"],
+    [{ name: "omelette" }, "name_taken"],
+    [{ name: "FINE one" }, "name_taken"],
+    [{ id: "nope", notes: "x" }, "not_found"],
+    [{ id: "d2", notes: "again" }, "invalid_params"],
+    [{ id: "d1", name: "Pasta" }, "name_taken"],
+    [{ notes: "no name when creating" }, "invalid_params"],
+    [{ name: "x", bogus: 1 }, "invalid_params"],
+    [{ name: "x", prep_minutes: -1 }, "invalid_params"],
+  ];
+  for (const [bad, code] of cases) {
+    const { result, logs } = call(app, "bulk_upsert_dishes", { dishes: good.concat([bad]) });
+    const label = JSON.stringify(bad);
+    assert.equal(result.isError, true, label);
+    assert.equal(result.structuredContent.code, code, label);
+    assert.match(result.content[0].text, /dishes\[2\]/, label);
+    assert.equal(snapshot(app), before, label);
+    assert.equal(logs.length, 1, label);
+  }
+  const notObject = call(app, "bulk_upsert_dishes", { dishes: [{ name: "a" }, 5] }).result;
+  assert.equal(notObject.isError, true);
+  assert.match(notObject.content[0].text, /dishes\[1\]/);
+  assert.equal(snapshot(app), before);
+});
+
+test("bulk_upsert_dishes lets a later item reuse a name freed by a rename, and upsert_dish is unchanged", () => {
+  const app = makeApp(); seed(app);
+  // renaming a dish frees its old name for a later item in the same list
+  const r = call(app, "bulk_upsert_dishes", { dishes: [{ id: "d1", name: "Frittata" }, { name: "Omelette" }] }).result;
+  assert.equal(r.isError, undefined, JSON.stringify(r));
+  assert.deepEqual(r.structuredContent.dishes.map((d) => d.name), ["Frittata", "Omelette"]);
+  const single = call(app, "upsert_dish", { name: "Frittata" }).result;
+  assert.equal(single.structuredContent.code, "name_taken");
+});

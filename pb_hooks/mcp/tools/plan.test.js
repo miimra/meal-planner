@@ -159,7 +159,7 @@ test("read tools are read-only and reuse the shared service and calendar", () =>
   for (const fn of ["service.weekValue", "service.dayValue", "service.categoryValue", "calendar.dinnerRotation"]) assert.ok(source.includes(fn), fn);
   assert.doesNotMatch(source, /\.(save|delete|create)\w*\(/);
   const tools = require("./plan.js");
-  assert.deepEqual(tools.map((t) => t.name), ["get_week", "get_plan", "list_categories", "get_rotation", "set_dinner", "set_dinner_status", "clear_dinner", "set_day_category", "set_rotation_day"]);
+  assert.deepEqual(tools.map((t) => t.name), ["get_week", "get_plan", "list_categories", "get_rotation", "set_dinner", "set_dinner_status", "clear_dinner", "set_day_category", "set_rotation_day", "bulk_set_days"]);
   for (const tool of tools.slice(0, 4)) assert.equal(tool.annotations.readOnlyHint, true);
   for (const tool of tools.slice(4)) assert.equal(tool.annotations.readOnlyHint, false);
   assert.equal(tools.find((t) => t.name === "clear_dinner").annotations.destructiveHint, true);
