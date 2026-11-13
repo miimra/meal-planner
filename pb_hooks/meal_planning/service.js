@@ -413,13 +413,18 @@ function assignDish(tx, date, meal, dish, ingredients, category, current, source
   assignment.set("selection_source", source);
   if (category) assignment.set("category", category.id);
   tx.save(assignment);
+  rejectPendingSuggestions(tx, date, meal);
+  return assignment.id;
+}
+
+// A manual choice for a slot rejects that slot's pending suggestions.
+function rejectPendingSuggestions(tx, date, meal) {
   const pending = tx.findRecordsByFilter("meal_suggestions", "date = {:date} && meal = {:meal} && outcome = 'pending'", "", 0, 0, { date, meal });
   for (const old of pending) {
     old.set("outcome", "rejected");
     old.set("rejection_reason", "manual_choice");
     tx.save(old);
   }
-  return assignment.id;
 }
 
 function setManualDish(app, date, meal, dishName, ingredients, source) {
@@ -697,61 +702,124 @@ function checkDishFields(input) {
   return out;
 }
 
-// Creates a dish (no id) or partially updates one (id). A name already used by
-// another dish (ignoring case) is refused with name_taken.
-function upsertDish(app, input) {
+function dishUpsertState(tx) {
+  const records = tx.findRecordsByFilter("dishes", "", "name", 0, 0);
+  return {
+    records,
+    names: records.map((item) => ({ id: item.id, name: item.getString("name").trim().toLowerCase() })),
+    categories: sortedCategories(tx),
+    seenIds: [],
+  };
+}
+
+// Validates one upsert against `state` (which also tracks the earlier items of
+// a bulk call, so names and ids are checked across the whole list) and returns
+// a plan. Reads only: throws a domain error before anything is written.
+function planDishUpsert(state, input) {
   const hasId = input.id !== undefined;
   if (hasId && (typeof input.id !== "string" || !input.id)) throw invalid("id must be a non-empty string");
   const fields = checkDishFields(input);
   if (!hasId && !fields.name) throw invalid("name is required to create a dish");
+  let record = null;
+  if (hasId) {
+    if (state.seenIds.indexOf(input.id) !== -1) throw invalid("id appears more than once");
+    record = state.records.find((item) => item.id === input.id);
+    if (!record) throw domainError("not_found", "No dish with that id");
+    state.seenIds.push(input.id);
+  }
+  const ownId = record ? record.id : undefined;
+  if (fields.name !== undefined) {
+    const wanted = fields.name.toLowerCase();
+    if (state.names.find((item) => item.id !== ownId && item.name === wanted)) {
+      throw domainError("name_taken", "name_taken: another dish is already named that");
+    }
+  }
+  const relationFor = (catId) => state.categories.find((item) => item.getInt("catId") === catId);
+  const relation = [];
+  if (fields.categoryIds !== undefined) {
+    for (const catId of fields.categoryIds) {
+      const category = relationFor(catId);
+      if (!category) throw invalid(`categoryIds contains unknown catId ${catId}`);
+      relation.push(category.id);
+    }
+  }
+  let primary = null;
+  if (fields.catId !== undefined) {
+    primary = relationFor(fields.catId);
+    if (!primary) throw invalid(`unknown catId ${fields.catId}`);
+  }
+  if (fields.name !== undefined) {
+    const lower = fields.name.toLowerCase();
+    const entry = record ? state.names.find((item) => item.id === record.id) : null;
+    if (entry) entry.name = lower;
+    else state.names.push({ id: "new:" + state.names.length, name: lower });
+  }
+  return { record, fields, relation, primary };
+}
+
+// Saves a planned upsert inside the caller's transaction.
+function applyDishUpsert(tx, plan) {
+  const { fields, relation, primary } = plan;
+  const created = !plan.record;
+  let record = plan.record;
+  if (created) {
+    record = new Record(tx.findCollectionByNameOrId("dishes"));
+    record.set("lifecycle", "regular");
+  }
+  for (const key of ["name", "ingredients", "instructions", "prep_minutes", "cook_minutes", "difficulty", "cuisine", "tags", "notes"]) {
+    if (fields[key] !== undefined) record.set(key, fields[key]);
+  }
+  if (primary) {
+    record.set("catId", primary.getInt("catId"));
+    if (fields.categoryIds === undefined && created) relation.push(primary.id);
+  }
+  if (fields.categoryIds !== undefined || (created && primary)) record.set("categories", relation);
+  tx.save(record);
+  return { id: record.id, created };
+}
+
+// Creates a dish (no id) or partially updates one (id). A name already used by
+// another dish (ignoring case) is refused with name_taken.
+function upsertDish(app, input) {
   let failure = null;
-  let id = "";
-  let created = false;
+  let saved = null;
   app.runInTransaction((tx) => {
-    const dishes = tx.findRecordsByFilter("dishes", "", "name", 0, 0);
-    let record = null;
-    if (hasId) {
-      record = dishes.find((item) => item.id === input.id);
-      if (!record) { failure = domainError("not_found", "No dish with that id"); return; }
+    let plan;
+    try {
+      plan = planDishUpsert(dishUpsertState(tx), input);
+    } catch (error) {
+      if (error && error.domain) { failure = error; return; }
+      throw error;
     }
-    if (fields.name !== undefined) {
-      const wanted = fields.name.toLowerCase();
-      const clash = dishes.find((item) => item.id !== (record && record.id) && item.getString("name").trim().toLowerCase() === wanted);
-      if (clash) { failure = domainError("name_taken", "name_taken: another dish is already named that"); return; }
-    }
-    const categories = sortedCategories(tx);
-    const relationFor = (catId) => categories.find((item) => item.getInt("catId") === catId);
-    const relation = [];
-    if (fields.categoryIds !== undefined) {
-      for (const catId of fields.categoryIds) {
-        const category = relationFor(catId);
-        if (!category) { failure = invalid(`categoryIds contains unknown catId ${catId}`); return; }
-        relation.push(category.id);
-      }
-    }
-    let primary = null;
-    if (fields.catId !== undefined) {
-      primary = relationFor(fields.catId);
-      if (!primary) { failure = invalid(`unknown catId ${fields.catId}`); return; }
-    }
-    created = !record;
-    if (created) {
-      record = new Record(tx.findCollectionByNameOrId("dishes"));
-      record.set("lifecycle", "regular");
-    }
-    for (const key of ["name", "ingredients", "instructions", "prep_minutes", "cook_minutes", "difficulty", "cuisine", "tags", "notes"]) {
-      if (fields[key] !== undefined) record.set(key, fields[key]);
-    }
-    if (primary) {
-      record.set("catId", primary.getInt("catId"));
-      if (fields.categoryIds === undefined && created) relation.push(primary.id);
-    }
-    if (fields.categoryIds !== undefined || (created && primary)) record.set("categories", relation);
-    tx.save(record);
-    id = record.id;
+    saved = applyDishUpsert(tx, plan);
   });
   if (failure) throw failure;
-  return { record: app.findRecordById("dishes", id), created };
+  return { record: app.findRecordById("dishes", saved.id), created: saved.created };
+}
+
+// All-or-nothing upsert of a list of dishes. Every item is validated before the
+// first save; the error names the failing item as `dishes[index]`.
+function bulkUpsertDishes(app, inputs) {
+  let failure = null;
+  let saved = [];
+  app.runInTransaction((tx) => {
+    const state = dishUpsertState(tx);
+    const plans = [];
+    for (let index = 0; index < inputs.length; index += 1) {
+      try {
+        plans.push(planDishUpsert(state, inputs[index]));
+      } catch (error) {
+        if (error && error.domain) {
+          failure = domainError(error.code, `dishes[${index}]: ${error.message}`);
+          return;
+        }
+        throw error;
+      }
+    }
+    saved = plans.map((plan) => applyDishUpsert(tx, plan));
+  });
+  if (failure) throw failure;
+  return saved.map((item) => ({ record: app.findRecordById("dishes", item.id), created: item.created }));
 }
 
 module.exports = {
@@ -759,6 +827,8 @@ module.exports = {
   createCategory,
   updateCategory,
   upsertDish,
+  bulkUpsertDishes,
+  rejectPendingSuggestions,
   assignmentFor,
   categoryByCatId,
   categoryValue,

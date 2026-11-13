@@ -400,3 +400,113 @@ test("set_rotation_day rejects a weekday outside 0-6 and changes no row", () => 
   for (const weekday of [-1, 7, 2.5, "3"]) assert.equal(call("set_rotation_day", { week: 1, weekday, catId: 9 }).isError, true, String(weekday));
   assert.equal(rotationRows(), before);
 });
+
+const state = () => JSON.stringify(app.store, (k, v) => (k === "collection" ? undefined : v));
+
+test("bulk_set_days writes dishes, new dishes, every status and category overrides in input order", () => {
+  reset();
+  addDish(app, "d1", "Kabab");
+  const r = call("bulk_set_days", {
+    days: [
+      { date: "2026-11-10", status: "skipped" },
+      { date: "2026-11-05", dishId: "d1" },
+      { date: "2026-11-06", dishName: "Brand New Stew", ingredients: ["rice"], catId: 4 },
+      { date: "2026-11-07", status: "eating_out" },
+      { date: "2026-11-08", status: "leftovers", catId: 3 },
+      { date: "2026-11-09", status: "buy_food" },
+      { date: "2026-11-11", dishName: "Kabab" },
+    ],
+  });
+  assert.equal(r.isError, undefined, JSON.stringify(r));
+  const days = r.structuredContent.days;
+  assert.deepEqual(days.map((d) => d.date), ["2026-11-10", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-11"]);
+  assert.equal(days[0].meals.dinner.status, "skipped");
+  assert.equal(days[1].meals.dinner.dish.id, "d1");
+  assert.equal(days[2].meals.dinner.dish.name, "Brand New Stew");
+  assert.equal(days[2].meals.dinner.category.catId, 4);
+  assert.equal(days[3].meals.dinner.status, "eating_out");
+  assert.equal(days[4].meals.dinner.status, "leftovers");
+  assert.equal(days[4].meals.dinner.category.catId, 3);
+  assert.equal(days[5].meals.dinner.status, "buy_food");
+  assert.equal(days[6].meals.dinner.dish.id, "d1");
+  assert.equal(days[1].meals.dinner.selectionSource, "mcp");
+  const created = app.store.dishes.find((d) => d.data.name === "Brand New Stew");
+  assert.equal(created.getInt("catId"), 4);
+  assert.deepEqual(created.get("ingredients"), ["rice"]);
+  assert.equal(app.store.dishes.length, 2);
+  assert.equal(app.store.meal_assignments.length, 7);
+  // same shape as the get_week day entries
+  const week = call("get_week", { date: "2026-11-05" }).structuredContent;
+  const byDate = (d) => week.days.find((x) => x.date === d);
+  for (const day of days.filter((d) => d.date >= "2026-11-05" && d.date <= "2026-11-08")) assert.deepEqual(day, byDate(day.date));
+});
+
+test("bulk_set_days accepts exactly 31 days and rejects 32 without writing", () => {
+  reset();
+  const make = (n) => Array.from({ length: n }, (_, i) => ({ date: new Date(Date.UTC(2026, 10, 4 + i)).toISOString().slice(0, 10), status: "skipped" }));
+  const tooMany = call("bulk_set_days", { days: make(32) });
+  assert.equal(tooMany.isError, true);
+  assert.equal(tooMany.structuredContent.code, "invalid_params");
+  assert.equal(app.store.meal_assignments.length, 0);
+  assert.equal(call("bulk_set_days", { days: [] }).isError, true);
+  const ok = call("bulk_set_days", { days: make(31) });
+  assert.equal(ok.isError, undefined);
+  assert.equal(ok.structuredContent.days.length, 31);
+  assert.equal(app.store.meal_assignments.length, 31);
+});
+
+test("bulk_set_days fails on any invalid item, names its index and writes nothing", () => {
+  addDish(app = makeApp(), "d1", "Kabab");
+  const good = { date: "2026-11-05", dishName: "Would Be Created" };
+  const before = state();
+  const cases = [
+    [{ date: "2026-11-03", status: "skipped" }, "past_date"],
+    [{ date: "2026-11-06", dishId: "nope" }, "dish_not_found"],
+    [{ date: "2026-11-06", status: "skipped", catId: 99 }, "unknown_category"],
+    [{ date: "2026-11-06" }, "invalid_params"],
+    [{ date: "2026-11-06", dishId: "d1", status: "skipped" }, "invalid_params"],
+    [{ date: "2026-11-06", dishName: "x", status: "skipped" }, "invalid_params"],
+    [{ date: "2026-11-06", status: "nonsense" }, "invalid_params"],
+    [{ date: "2026-11-05", status: "skipped" }, "invalid_params"],
+    [{ date: "2026-11-06", dishName: "x", bogus: 1 }, "invalid_params"],
+    [{ date: "2026-02-30", status: "skipped" }, "invalid_params"],
+    [null, "invalid_params"],
+  ];
+  for (const [bad, code] of cases) {
+    const r = call("bulk_set_days", { days: [{ date: "2026-11-09", status: "leftovers" }, good, bad] });
+    const label = JSON.stringify(bad);
+    assert.equal(r.isError, true, label);
+    assert.equal(r.structuredContent.code, code, label);
+    assert.match(r.content[0].text, /days\[2\]/, label);
+    assert.equal(state(), before, label);
+    assert.deepEqual(r.logs, [], label);
+  }
+  // the duplicate is reported at the later item
+  const dup = call("bulk_set_days", { days: [good, { date: "2026-11-05", status: "skipped" }] });
+  assert.match(dup.content[0].text, /days\[1\]/);
+  assert.match(dup.content[0].text, /days\[0\]/);
+});
+
+test("bulk_set_days rejects pending suggestions on every changed day only", () => {
+  reset();
+  addDish(app, "d1", "Kabab");
+  const mk = (date) => { const s = new Record("meal_suggestions"); Object.assign(s.data, { date, meal: "dinner", outcome: "pending" }); app.save(s); return s; };
+  const a = mk("2026-11-05"), b = mk("2026-11-06"), c = mk("2026-11-07"), untouched = mk("2026-11-08");
+  const r = call("bulk_set_days", { days: [
+    { date: "2026-11-05", dishId: "d1" },
+    { date: "2026-11-06", dishName: "Fresh" },
+    { date: "2026-11-07", status: "skipped" },
+  ] });
+  assert.equal(r.isError, undefined);
+  for (const s of [a, b, c]) {
+    assert.equal(s.data.outcome, "rejected");
+    assert.equal(s.data.rejection_reason, "manual_choice");
+  }
+  assert.equal(untouched.data.outcome, "pending");
+});
+
+test("single set_dinner and set_dinner_status behave unchanged next to the bulk tool", () => {
+  reset();
+  assert.equal(dinner(call("set_dinner", { date: "2026-11-05", dishName: "Solo" })).dish.name, "Solo");
+  assert.equal(dinner(call("set_dinner_status", { date: "2026-11-06", status: "skipped" })).status, "skipped");
+});

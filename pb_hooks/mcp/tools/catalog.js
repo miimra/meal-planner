@@ -9,6 +9,7 @@ const service = require(`${__hooks}/meal_planning/service.js`);
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 const MAX_HISTORY_DAYS = 366;
+const MAX_BULK_DISHES = 50;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function strings(record, field) {
@@ -159,6 +160,31 @@ function upsertDish(app, args) {
   return fields;
 }
 
+function bulkUpsertDishes(app, args) {
+  if (args.dishes.length < 1 || args.dishes.length > MAX_BULK_DISHES) {
+    throw new ToolError(`dishes must contain between 1 and ${MAX_BULK_DISHES} items`, "invalid_params");
+  }
+  args.dishes.forEach(function (item, index) {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) {
+      throw new ToolError(`dishes[${index}]: must be an object`, "invalid_params");
+    }
+  });
+  const saved = runAction("bulk_upsert_dishes", "bulk", function () {
+    return service.bulkUpsertDishes(app, args.dishes);
+  }, function (outcomes) {
+    const created = outcomes.filter(function (outcome) { return outcome.created; }).length;
+    return { id: "bulk", result: `created ${created}, updated ${outcomes.length - created}` };
+  });
+  const categories = categoryIndex(app);
+  return {
+    dishes: saved.map(function (outcome) {
+      const fields = dishFields(outcome.record, categories);
+      fields.instructions = strings(outcome.record, "instructions");
+      return fields;
+    }),
+  };
+}
+
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false };
 const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
 const CATEGORY_PROPERTIES = {
@@ -172,6 +198,20 @@ const CATEGORY_PROPERTIES = {
   weekend_only: { type: "boolean", description: "True when the category only suits weekends." },
   prep_ahead: { type: "boolean", description: "True when the category usually needs preparation ahead." },
   notes: { type: "string", description: "Free-text guidance for the category; empty string clears it." },
+};
+const DISH_PROPERTIES = {
+  id: { type: "string", description: "Id of the dish to update; omit to create a new dish." },
+  name: { type: "string", description: "Dish name, unique ignoring case; required when creating." },
+  catId: { type: "integer", description: "Primary category catId." },
+  categoryIds: { type: "array", items: { type: "integer" }, description: "Related category catIds (replaces the current list)." },
+  ingredients: { type: "array", items: { type: "string" }, description: "Ingredient lines (replaces the current list)." },
+  instructions: { type: "array", items: { type: "string" }, description: "Recipe steps (replaces the current list)." },
+  prep_minutes: { type: "integer", description: "Preparation minutes, 0 to 1440." },
+  cook_minutes: { type: "integer", description: "Cooking minutes, 0 to 1440." },
+  difficulty: { type: "string", enum: ["easy", "medium", "hard"], description: "Difficulty." },
+  cuisine: { type: "string", description: "Cuisine label, at most 120 characters." },
+  tags: { type: "array", items: { type: "string" }, description: "Tags such as meal:dinner (replaces the current list)." },
+  notes: { type: "string", description: "Free-text notes; empty string clears them." },
 };
 const EMPTY_SCHEMA = { type: "object", properties: {}, additionalProperties: false };
 
@@ -256,22 +296,29 @@ module.exports = [{
   description: "Creates a dish (no id; name required) or partially updates an existing one (id; only the fields you pass change). Dish names are unique ignoring case: a name used by another dish fails with name_taken and changes nothing. catId is the primary category and categoryIds the related ones, both as catIds from list_categories. Returns the dish as get_dish shows it.",
   inputSchema: {
     type: "object",
-    properties: {
-      id: { type: "string", description: "Id of the dish to update; omit to create a new dish." },
-      name: { type: "string", description: "Dish name, unique ignoring case; required when creating." },
-      catId: { type: "integer", description: "Primary category catId." },
-      categoryIds: { type: "array", items: { type: "integer" }, description: "Related category catIds (replaces the current list)." },
-      ingredients: { type: "array", items: { type: "string" }, description: "Ingredient lines (replaces the current list)." },
-      instructions: { type: "array", items: { type: "string" }, description: "Recipe steps (replaces the current list)." },
-      prep_minutes: { type: "integer", description: "Preparation minutes, 0 to 1440." },
-      cook_minutes: { type: "integer", description: "Cooking minutes, 0 to 1440." },
-      difficulty: { type: "string", enum: ["easy", "medium", "hard"], description: "Difficulty." },
-      cuisine: { type: "string", description: "Cuisine label, at most 120 characters." },
-      tags: { type: "array", items: { type: "string" }, description: "Tags such as meal:dinner (replaces the current list)." },
-      notes: { type: "string", description: "Free-text notes; empty string clears them." },
-    },
+    properties: DISH_PROPERTIES,
     additionalProperties: false,
   },
   annotations: WRITE,
   handler: upsertDish,
+}, {
+  name: "bulk_upsert_dishes",
+  title: "Create or update several dishes",
+  description: "Creates or partially updates up to 50 dishes in one call, each item with the same fields and rules as upsert_dish (no id creates, an id updates only the passed fields). All items are validated before anything is written and the whole list is saved in one transaction: if any item is invalid (unknown category, name used by another dish or twice in the list, unknown or repeated id, bad field) nothing is written and the error names the item, for example `dishes[2]: ...`. Returns { dishes } in input order, each as get_dish shows it.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      dishes: {
+        type: "array",
+        minItems: 1,
+        maxItems: MAX_BULK_DISHES,
+        description: "1 to 50 dishes to create or update.",
+        items: { type: "object", properties: DISH_PROPERTIES, additionalProperties: false },
+      },
+    },
+    required: ["dishes"],
+    additionalProperties: false,
+  },
+  annotations: WRITE,
+  handler: bulkUpsertDishes,
 }];

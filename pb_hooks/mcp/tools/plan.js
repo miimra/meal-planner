@@ -85,25 +85,37 @@ function dinnerResult(app, date) {
   return service.dayValue(app, date);
 }
 
-function setDinner(app, args) {
-  const date = writeDate(args);
+// Validates the dish choice of a set_dinner call (or bulk item) and returns
+// { hasId, name, ingredients }. Throws ToolError; touches no data.
+function parseDishChoice(args) {
   const hasId = args.dishId !== undefined;
   const hasName = args.dishName !== undefined;
   if (hasId === hasName) throw new ToolError("provide exactly one of dishId or dishName", "invalid_params");
   let ingredients = [];
   if (args.ingredients !== undefined) {
-    if (args.ingredients.length > MAX_INGREDIENTS || args.ingredients.some(function (item) { return typeof item !== "string"; })) {
+    if (!Array.isArray(args.ingredients) || args.ingredients.length > MAX_INGREDIENTS || args.ingredients.some(function (item) { return typeof item !== "string"; })) {
       throw new ToolError(`ingredients must be at most ${MAX_INGREDIENTS} strings`, "invalid_params");
     }
     ingredients = args.ingredients.map(function (item) { return item.trim().slice(0, MAX_TEXT); }).filter(Boolean);
   }
   let name = "";
   if (hasName) {
+    if (typeof args.dishName !== "string") throw new ToolError("dishName must be a string", "invalid_params");
     name = service.normalizeDishName(args.dishName);
     if (!name) throw new ToolError("dishName must not be empty", "invalid_params");
-  } else if (!args.dishId.trim()) {
-    throw new ToolError("dishId must not be empty", "invalid_params");
+  } else {
+    if (typeof args.dishId !== "string") throw new ToolError("dishId must be a string", "invalid_params");
+    if (!args.dishId.trim()) throw new ToolError("dishId must not be empty", "invalid_params");
   }
+  return { hasId: hasId, name: name, ingredients: ingredients };
+}
+
+function setDinner(app, args) {
+  const date = writeDate(args);
+  const choice = parseDishChoice(args);
+  const hasId = choice.hasId;
+  const name = choice.name;
+  const ingredients = choice.ingredients;
   // Expected failures are raised before the transaction: an exception thrown
   // inside runInTransaction crosses into Go and loses its type.
   if (hasId && !service.dishExists(app, args.dishId)) throw new ToolError("no dish with that dishId", "dish_not_found");
@@ -118,6 +130,78 @@ function setDinner(app, args) {
   });
   logAction("set_dinner", date, `planned ${limited(result.meals.dinner.dish.name)}`);
   return result;
+}
+
+const MAX_BULK_DAYS = 31;
+const BULK_DAY_KEYS = ["date", "dishId", "dishName", "status", "catId", "ingredients"];
+
+// Validates one bulk_set_days item without writing and returns what to write.
+function parseBulkDay(app, item, today) {
+  if (item === null || typeof item !== "object" || Array.isArray(item)) throw new ToolError("must be an object", "invalid_params");
+  for (const key of Object.keys(item)) {
+    if (BULK_DAY_KEYS.indexOf(key) === -1) throw new ToolError(`unknown field ${key.slice(0, 40)}`, "invalid_params");
+  }
+  const date = requireDate(item.date, "date");
+  if (date < today) throw new ToolError("date is in the past; only today and later dates can be changed", "past_date");
+  const hasDish = item.dishId !== undefined || item.dishName !== undefined;
+  const hasStatus = item.status !== undefined;
+  if (hasDish === hasStatus) throw new ToolError("provide either a dish (dishId or dishName) or a status, not both and not neither", "invalid_params");
+  const day = { date: date, status: null, choice: null, category: null, overrideCategory: false };
+  if (hasStatus) {
+    if (SPECIAL_STATUSES.indexOf(item.status) === -1) throw new ToolError(`status must be one of: ${SPECIAL_STATUSES.join(", ")}`, "invalid_params");
+    if (item.ingredients !== undefined) throw new ToolError("ingredients only apply together with a dish", "invalid_params");
+    day.status = item.status;
+  } else {
+    day.choice = parseDishChoice(item);
+    if (day.choice.hasId && !service.dishExists(app, item.dishId)) throw new ToolError("no dish with that dishId", "dish_not_found");
+    day.dishId = item.dishId;
+  }
+  if (item.catId !== undefined) {
+    if (!Number.isInteger(item.catId)) throw new ToolError("catId must be an integer", "invalid_params");
+    day.category = service.categoryByCatId(app, item.catId);
+    if (!day.category) throw new ToolError("unknown catId; use list_categories", "unknown_category");
+  }
+  return day;
+}
+
+// Plans several days in one all-or-nothing call: every item is validated first
+// (errors name the item as days[index]), then all days are written in a single
+// transaction.
+function bulkSetDays(app, args) {
+  if (args.days.length < 1 || args.days.length > MAX_BULK_DAYS) {
+    throw new ToolError(`days must contain between 1 and ${MAX_BULK_DAYS} items`, "invalid_params");
+  }
+  const today = clock.localNow().date;
+  const seen = {};
+  const days = args.days.map(function (item, index) {
+    try {
+      const day = parseBulkDay(app, item, today);
+      if (seen[day.date]) throw new ToolError(`date ${day.date} is already used by days[${seen[day.date] - 1}]`, "invalid_params");
+      seen[day.date] = index + 1;
+      return day;
+    } catch (error) {
+      if (error instanceof ToolError) throw new ToolError(`days[${index}]: ${error.message}`, error.code);
+      throw error;
+    }
+  });
+  let results = [];
+  app.runInTransaction(function (tx) {
+    for (const day of days) {
+      // The override goes first so a new dish is created in that category.
+      if (day.category) service.setCategoryOverride(tx, day.date, "dinner", day.category, "mcp");
+      if (day.status) {
+        service.setSpecialStatus(tx, day.date, "dinner", day.status, "mcp");
+        service.rejectPendingSuggestions(tx, day.date, "dinner");
+      } else if (day.choice.hasId) {
+        service.setExistingDish(tx, day.date, "dinner", day.dishId, day.choice.ingredients, "mcp");
+      } else {
+        service.setManualDish(tx, day.date, "dinner", day.choice.name, day.choice.ingredients, "mcp");
+      }
+    }
+    results = days.map(function (day) { return dinnerResult(tx, day.date); });
+  });
+  logAction("bulk_set_days", days[0].date, `${days.length} days written`);
+  return { days: results };
 }
 
 function setDinnerStatus(app, args) {
@@ -308,4 +392,36 @@ module.exports = [{
   },
   annotations: WRITE,
   handler: setRotationDay,
+}, {
+  name: "bulk_set_days",
+  title: "Plan several days at once",
+  description: "Sets the dinner of up to 31 days in one call. Each item has a `date` (today or later) and exactly one of a dish (`dishId`, or `dishName` matching exactly or naming a new dish to create, with the same rules as set_dinner, plus optional `ingredients`) or a `status` (leftovers, buy_food, eating_out, skipped), and optionally a `catId` category override for that day. All items are validated first and written in one transaction: if any item is invalid (past date, unknown dishId or catId, neither or both of dish and status, the same date twice) nothing is written, including new dishes, and the error names the item, for example `days[3]: ...`. Pending suggestions of every changed day are rejected. Returns { days }: the resulting days in input order, each in the get_week day shape.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      days: {
+        type: "array",
+        minItems: 1,
+        maxItems: MAX_BULK_DAYS,
+        description: "1 to 31 days to set, each with a distinct date.",
+        items: {
+          type: "object",
+          properties: {
+            date: DATE_PROP,
+            dishId: { type: "string", description: "Id of an existing dish. Use this or dishName or status." },
+            dishName: { type: "string", description: "Exact name of an existing dish, or the name of a new dish to create." },
+            status: { type: "string", enum: SPECIAL_STATUSES, description: "One of leftovers, buy_food, eating_out, skipped. Use instead of a dish." },
+            catId: { type: "integer", description: "Optional category override for this day (see list_categories)." },
+            ingredients: { type: "array", description: "Optional ingredient strings (max 50) to store on the dish.", items: { type: "string" } },
+          },
+          required: ["date"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["days"],
+    additionalProperties: false,
+  },
+  annotations: WRITE,
+  handler: bulkSetDays,
 }];

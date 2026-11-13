@@ -95,6 +95,8 @@ transaction and logs `MCP action: <tool> <id> -> <result>` (free text capped at
 - `set_dinner_status` - mark a dinner leftovers, buy_food, eating_out or skipped.
 - `clear_dinner` - remove a dinner plan (not when it has cooked history).
 - `set_day_category` - override a day's category, or remove it with null.
+- `bulk_set_days` - set up to 31 dinners in one call (each day: `date` plus a dish by `dishId`/`dishName` or a `status`, optional `catId` override); all-or-nothing, errors name the item as `days[index]`.
+- `bulk_upsert_dishes` - create or partially update up to 50 dishes in one call with the `upsert_dish` rules; all-or-nothing, errors name the item as `dishes[index]`.
 - `set_rotation_day` - change one day (`week` 1-2, `weekday` 0-6, `catId` or `"eat_out"`) of the two-week rotation; assigned dates keep their stored category.
 
 Recommendation: the MCP client connects over the tunnel, but the endpoint does
